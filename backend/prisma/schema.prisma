@@ -1,0 +1,82 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  nickname  String?
+  createdAt DateTime @default(now())
+
+  prompts Prompt[]
+  votes   Vote[]
+}
+
+model Model {
+  id         Int      @id @default(autoincrement())
+  name       String // gpt-4.1 같은 별칭
+  provider   String // openai, anthropic, etc
+  apiModelId String // 실제 API 모델명
+  createdAt  DateTime @default(now())
+
+  responses  Response[]
+  matchesAsA Match[]    @relation("MatchModelA")
+  matchesAsB Match[]    @relation("MatchModelB")
+}
+
+model Prompt {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  text      String
+  createdAt DateTime @default(now())
+
+  user    User?   @relation(fields: [userId], references: [id])
+  matches Match[]
+}
+
+model Match {
+  id        Int      @id @default(autoincrement())
+  promptId  Int
+  modelAId  Int
+  modelBId  Int
+  createdAt DateTime @default(now())
+
+  prompt    Prompt     @relation(fields: [promptId], references: [id])
+  modelA    Model      @relation("MatchModelA", fields: [modelAId], references: [id])
+  modelB    Model      @relation("MatchModelB", fields: [modelBId], references: [id])
+  responses Response[]
+  votes     Vote[]
+}
+
+model Response {
+  id        Int    @id @default(autoincrement())
+  matchId   Int
+  modelId   Int
+  position  String // "A" or "B"
+  content   String
+  latencyMs Int?
+
+  match Match @relation(fields: [matchId], references: [id])
+  model Model @relation(fields: [modelId], references: [id])
+}
+
+model Vote {
+  id             Int      @id @default(autoincrement())
+  matchId        Int
+  userId         Int?
+  chosenPosition String // "A" or "B"
+  createdAt      DateTime @default(now())
+
+  match Match @relation(fields: [matchId], references: [id])
+  user  User? @relation(fields: [userId], references: [id])
+
+  // 나중에 점수 로직(컨센서스/레퍼런스/일관성)을 위해 남겨둔 컬럼들
+  consensusScore   Float @default(0)
+  referenceScore   Float @default(0)
+  consistencyScore Float @default(0)
+  totalScore       Float @default(0)
+}
