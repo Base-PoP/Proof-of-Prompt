@@ -7,6 +7,8 @@ import { Textarea } from './ui/textarea';
 import { Copy, Maximize2, Loader2 } from 'lucide-react';
 import { arenaApi } from '../../lib/api';
 import { usePrivy } from '@privy-io/react-auth';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 type VoteOption = 'left' | 'right' | 'tie' | 'both-bad' | null;
 
@@ -25,13 +27,15 @@ interface BattlePageProps {
     title: string;
     description: string;
   };
+  initialPrompt?: string;
+  onNewChat?: () => void;
 }
 
-export function BattlePage({ problem }: BattlePageProps) {
+export function BattlePage({ problem, initialPrompt, onNewChat }: BattlePageProps) {
   const { user } = usePrivy();
   const [currentBattle, setCurrentBattle] = useState<Battle | null>(null);
   const [selectedVote, setSelectedVote] = useState<VoteOption>(null);
-  const [userPrompt, setUserPrompt] = useState('');
+  const [userPrompt, setUserPrompt] = useState(initialPrompt || '');
   const [isLoading, setIsLoading] = useState(false);
   const [isVoting, setIsVoting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +62,24 @@ export function BattlePage({ problem }: BattlePageProps) {
         modelBId: match.modelBId,
       });
       setUserPrompt('');
+      setSelectedVote(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '매치 생성 실패');
+      console.error('Failed to create match:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleNewPrompt = () => {
+    setCurrentBattle(null);
+    setSelectedVote(null);
+    setUserPrompt('');
+    setError(null);
+    if (onNewChat) {
+      onNewChat();
+    }
+  };
     } catch (err) {
       setError(err instanceof Error ? err.message : '매치 생성 실패');
       console.error('Failed to create match:', err);
@@ -75,21 +97,20 @@ export function BattlePage({ problem }: BattlePageProps) {
 
     try {
       const userId = user?.wallet?.address;
-      let winner: 'A' | 'B' | 'tie' | 'both-bad';
+      let chosen: 'A' | 'B' | 'TIE';
       
-      if (vote === 'left') winner = 'A';
-      else if (vote === 'right') winner = 'B';
-      else if (vote === 'tie') winner = 'tie';
-      else winner = 'both-bad';
+      if (vote === 'left') chosen = 'A';
+      else if (vote === 'right') chosen = 'B';
+      else chosen = 'TIE'; // tie and both-bad both map to TIE
 
-      const result = await arenaApi.vote(currentBattle.matchId, winner, userId);
+      const result = await arenaApi.vote(currentBattle.matchId, chosen, userId);
       
-      if (result.success) {
-        // Show success feedback
-        setTimeout(() => {
-          setSelectedVote(null);
-          setCurrentBattle(null);
-        }, 1500);
+      console.log('투표 결과:', result);
+      
+      if (result.ok) {
+        // 투표 성공 - 화면은 유지하고 선택만 표시
+        // selectedVote는 유지되어 어떤 선택을 했는지 보여줌
+        alert(`투표 완료! AI 심판: ${result.refChoice || 'N/A'}, 총 점수: ${result.vote?.totalScore || 0}`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '투표 실패');
@@ -160,15 +181,17 @@ export function BattlePage({ problem }: BattlePageProps) {
       {/* Battle Arena - Show when battle exists */}
       {currentBattle && (
         <>
-          {/* Current Prompt */}
-          <div className="text-center mb-6">
-            <p className="text-xl font-medium leading-relaxed">{currentBattle.prompt}</p>
+          {/* Current Prompt - Message Bubble Style */}
+          <div className="flex justify-end mb-6">
+            <div className="max-w-2xl bg-white border border-gray-200 rounded-2xl px-5 py-3 shadow-sm">
+              <p className="text-base text-gray-800 leading-relaxed">{currentBattle.prompt}</p>
+            </div>
           </div>
 
           {/* Battle Arena - Two Responses */}
           <div className="grid md:grid-cols-2 gap-4 mb-6">
             {/* Assistant A */}
-            <Card className="p-6 hover:shadow-xl transition-all duration-300 border-2 min-h-[400px] flex flex-col group" style={{ borderColor: '#0052FF20' }}>
+            <Card className="p-6 hover:shadow-xl transition-all duration-300 border-2 max-h-[600px] flex flex-col group" style={{ borderColor: '#0052FF20' }}>
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
                 <h3 className="text-sm font-semibold text-gray-700">Assistant A</h3>
                 <div className="flex gap-2">
@@ -187,13 +210,15 @@ export function BattlePage({ problem }: BattlePageProps) {
                   </button>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto min-h-[300px] whitespace-pre-wrap text-gray-700 leading-relaxed">
-                {currentBattle.responseA}
+              <div className="flex-1 overflow-y-auto text-gray-700 leading-relaxed prose prose-sm max-w-none">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {currentBattle.responseA}
+                </ReactMarkdown>
               </div>
             </Card>
 
             {/* Assistant B */}
-            <Card className="p-6 hover:shadow-xl transition-all duration-300 border-2 min-h-[400px] flex flex-col group" style={{ borderColor: '#0052FF20' }}>
+            <Card className="p-6 hover:shadow-xl transition-all duration-300 border-2 max-h-[600px] flex flex-col group" style={{ borderColor: '#0052FF20' }}>
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
                 <h3 className="text-sm font-semibold text-gray-700">Assistant B</h3>
                 <div className="flex gap-2">
@@ -212,8 +237,10 @@ export function BattlePage({ problem }: BattlePageProps) {
                   </button>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto min-h-[300px] whitespace-pre-wrap text-gray-700 leading-relaxed">
-                {currentBattle.responseB}
+              <div className="flex-1 overflow-y-auto text-gray-700 leading-relaxed prose prose-sm max-w-none">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {currentBattle.responseB}
+                </ReactMarkdown>
               </div>
             </Card>
           </div>
@@ -274,8 +301,43 @@ export function BattlePage({ problem }: BattlePageProps) {
             </Button>
           </div>
 
+          {/* New Prompt Input - Show after voting */}
+          <div className="mt-8">
+            <Card className="p-4 border-2 shadow-sm hover:shadow-md transition-shadow duration-200" style={{ borderColor: '#0052FF20' }}>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <Textarea
+                  placeholder="다음 배틀을 시작하려면 새로운 질문을 입력하세요..."
+                  value={userPrompt}
+                  onChange={(e) => setUserPrompt(e.target.value)}
+                  className="flex-1 min-h-[50px] resize-none"
+                  disabled={isLoading}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                      handleStartBattle();
+                    }
+                  }}
+                />
+                <Button 
+                  className="px-8 h-auto sm:h-10 transition-all hover:scale-105 active:scale-95"
+                  style={{ backgroundColor: '#0052FF' }}
+                  onClick={handleStartBattle}
+                  disabled={isLoading || !userPrompt.trim()}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    'Next Battle'
+                  )}
+                </Button>
+              </div>
+            </Card>
+          </div>
+
           {/* Stats/Info Section */}
-          <div className="text-center text-sm text-gray-500">
+          <div className="text-center text-sm text-gray-500 mt-6">
             <p>투표를 통해 더 나은 AI 응답을 선택해주세요! 🎯</p>
             <p className="mt-2">
               Powered by <span style={{ color: '#0052FF' }}>Base</span> blockchain
