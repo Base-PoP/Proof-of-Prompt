@@ -4,8 +4,8 @@ import { Home, Trophy, User, Menu, Plus, ChevronLeft } from 'lucide-react';
 import { Button } from './ui/button';
 
 interface SidebarProps {
-  currentPage: 'landing' | 'battle' | 'leaderboard' | 'profile';
-  onNavigate: (page: 'landing' | 'battle' | 'leaderboard' | 'profile') => void;
+  currentPage: 'home' | 'battle' | 'leaderboard' | 'profile';
+  onNavigate: (page: 'home' | 'battle' | 'leaderboard' | 'profile') => void;
   isOpen: boolean;
   onToggle: () => void;
   onNewChat: () => void;
@@ -13,7 +13,8 @@ interface SidebarProps {
 
 export function Sidebar({ currentPage, onNavigate, isOpen, onToggle, onNewChat }: SidebarProps) {
   const menuItems = [
-    { id: 'landing' as const, label: 'Home', icon: Home },
+    { id: 'home' as const, label: 'Home', icon: Home },
+    { id: 'battle' as const, label: 'Battle', icon: Trophy },
     { id: 'leaderboard' as const, label: 'Leaderboard', icon: Trophy },
     { id: 'profile' as const, label: 'Profile', icon: User },
   ];
@@ -38,7 +39,7 @@ export function Sidebar({ currentPage, onNavigate, isOpen, onToggle, onNewChat }
           {/* Logo Header */}
           <div className={`p-4 border-b flex items-center justify-between ${!isOpen && 'lg:justify-center lg:flex-col lg:gap-2'}`}>
             <button
-              onClick={() => onNavigate('landing')}
+              onClick={() => onNavigate('home')}
               className={`flex items-center gap-1 hover:opacity-80 transition-opacity ${!isOpen && 'lg:flex-col lg:gap-0'}`}
               title={!isOpen ? 'LM Battle' : undefined}
             >

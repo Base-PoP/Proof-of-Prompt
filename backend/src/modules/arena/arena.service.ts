@@ -95,10 +95,10 @@ export const createMatchHandler = async (req: Request, res: Response) => {
     return res.json({
       matchId: match.id,
       prompt,
-      modelA,
-      modelB,
-      responseA,
-      responseB
+      modelAId: modelA.id,
+      modelBId: modelB.id,
+      responseA: responseAText,
+      responseB: responseBText
     });
   } catch (err: any) {
     console.error("❌ [MATCH ERROR]", err?.response?.data || err);

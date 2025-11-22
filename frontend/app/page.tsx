@@ -4,12 +4,13 @@ import { useState } from 'react';
 import { WalletButton } from './components/WalletButton';
 import { WalletBalance } from './components/WalletBalance';
 import { Sidebar } from './components/Sidebar';
+import { HomePage } from './components/HomePage';
 import { LandingPage } from './components/LandingPage';
 import { BattlePage } from './components/BattlePage';
 import { LeaderboardPage } from './components/LeaderboardPage';
 import { ProfilePage } from './components/ProfilePage';
 
-type Page = 'landing' | 'battle' | 'leaderboard' | 'profile';
+type Page = 'home' | 'battle' | 'leaderboard' | 'profile';
 
 interface Problem {
   id: string;
@@ -22,13 +23,20 @@ interface Problem {
 }
 
 export default function Home() {
-  const [currentPage, setCurrentPage] = useState<Page>('landing');
+  const [currentPage, setCurrentPage] = useState<Page>('home');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedProblem, setSelectedProblem] = useState<Problem | null>(null);
+  const [directPrompt, setDirectPrompt] = useState<string>('');
 
   const handleNewChat = () => {
-    setCurrentPage('landing');
+    setCurrentPage('home');
     setSelectedProblem(null);
+    setDirectPrompt('');
+  };
+
+  const handleStartBattle = (prompt: string) => {
+    setDirectPrompt(prompt);
+    setCurrentPage('battle');
   };
 
   const handleSelectProblem = (problem: Problem) => {
@@ -38,16 +46,16 @@ export default function Home() {
 
   const renderPage = () => {
     switch (currentPage) {
-      case 'landing':
-        return <LandingPage onSelectProblem={handleSelectProblem} />;
+      case 'home':
+        return <HomePage onStartBattle={handleStartBattle} />;
       case 'battle':
-        return <BattlePage problem={selectedProblem || undefined} />;
+        return <LandingPage onSelectProblem={handleSelectProblem} />;
       case 'leaderboard':
         return <LeaderboardPage />;
       case 'profile':
         return <ProfilePage />;
       default:
-        return <LandingPage onSelectProblem={handleSelectProblem} />;
+        return <HomePage onStartBattle={handleStartBattle} />;
     }
   };
 

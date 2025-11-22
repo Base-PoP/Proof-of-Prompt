@@ -60,14 +60,26 @@ export const arenaApi = {
   },
 
   // Submit a vote
-  vote: async (matchId: string, winner: 'A' | 'B' | 'tie' | 'both-bad', userId?: string) => {
+  vote: async (matchId: string, chosen: 'A' | 'B' | 'TIE', userId?: string) => {
     return apiFetch<{
-      success: boolean;
-      message: string;
-      userScore?: number;
+      ok: boolean;
+      refChoice?: string;
+      modelA?: { rating: number };
+      modelB?: { rating: number };
+      user?: { score: number };
+      vote?: {
+        referenceScore: number;
+        consistencyScore: number;
+        consensusScore: number;
+        totalScore: number;
+      };
     }>('/arena/vote', {
       method: 'POST',
-      body: JSON.stringify({ matchId, winner, userId }),
+      body: JSON.stringify({ 
+        matchId: Number(matchId), 
+        chosen, 
+        userId: userId ? Number(userId) : 1 
+      }),
     });
   },
 };
