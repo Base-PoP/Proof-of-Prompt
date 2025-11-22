@@ -1,22 +1,55 @@
 'use client';
 
-import { Home, Trophy, User, Menu, Plus, ChevronLeft } from 'lucide-react';
+import { Home, LayoutDashboard, Trophy, User, Menu, Plus, ChevronLeft, MessageSquare, Trash2 } from 'lucide-react';
 import { Button } from './ui/button';
 
+interface ChatHistoryItem {
+  id: string;
+  title: string;
+  timestamp: string;
+}
+
 interface SidebarProps {
-  currentPage: 'landing' | 'battle' | 'leaderboard' | 'profile';
-  onNavigate: (page: 'landing' | 'battle' | 'leaderboard' | 'profile') => void;
+  currentPage: 'home' | 'dashboard' | 'conversation' | 'leaderboard' | 'profile';
+  onNavigate: (page: 'home' | 'dashboard' | 'conversation' | 'leaderboard' | 'profile') => void;
   isOpen: boolean;
   onToggle: () => void;
   onNewChat: () => void;
+  chatHistory?: ChatHistoryItem[];
+  onSelectChat?: (chatId: string) => void;
+  onDeleteChat?: (chatId: string) => void;
+  activeChatId?: string;
 }
 
-export function Sidebar({ currentPage, onNavigate, isOpen, onToggle, onNewChat }: SidebarProps) {
+export function Sidebar({ 
+  currentPage, 
+  onNavigate, 
+  isOpen, 
+  onToggle, 
+  onNewChat,
+  chatHistory = [],
+  onSelectChat,
+  onDeleteChat,
+  activeChatId
+}: SidebarProps) {
   const menuItems = [
-    { id: 'landing' as const, label: 'Home', icon: Home },
+    { id: 'home' as const, label: 'Home', icon: Home },
+    { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'leaderboard' as const, label: 'Leaderboard', icon: Trophy },
     { id: 'profile' as const, label: 'Profile', icon: User },
   ];
+
+  const formatTimestamp = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffInMs = now.getTime() - date.getTime();
+    const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+
+    if (diffInDays === 0) return 'Today';
+    if (diffInDays === 1) return 'Yesterday';
+    if (diffInDays < 7) return `${diffInDays} days ago`;
+    return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+  };
 
   return (
     <>
@@ -38,7 +71,10 @@ export function Sidebar({ currentPage, onNavigate, isOpen, onToggle, onNewChat }
           {/* Logo Header */}
           <div className={`p-4 border-b flex items-center justify-between ${!isOpen && 'lg:justify-center lg:flex-col lg:gap-2'}`}>
             <button
-              onClick={() => onNavigate('landing')}
+              onClick={() => {
+                onNewChat();
+                onNavigate('home');
+              }}
               className={`flex items-center gap-1 hover:opacity-80 transition-opacity ${!isOpen && 'lg:flex-col lg:gap-0'}`}
               title={!isOpen ? 'LM Battle' : undefined}
             >
@@ -103,8 +139,8 @@ export function Sidebar({ currentPage, onNavigate, isOpen, onToggle, onNewChat }
             </Button>
           </div>
 
-          {/* Navigation Menu */}
-          <nav className="flex-1 p-4 lg:p-2">
+          {/* Navigation Menu - Fixed */}
+          <nav className="p-4 lg:p-2 border-b">
             <div className="space-y-2">
               {menuItems.map((item) => {
                 const Icon = item.icon;
@@ -134,6 +170,90 @@ export function Sidebar({ currentPage, onNavigate, isOpen, onToggle, onNewChat }
               })}
             </div>
           </nav>
+
+          {/* Chat History - Scrollable */}
+          {isOpen && chatHistory.length > 0 && (
+            <div className="flex-1 overflow-hidden flex flex-col">
+              <div className="px-4 py-3 border-b">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Recent Chats
+                </h3>
+              </div>
+              <div className="flex-1 overflow-y-auto px-2 py-2">
+                <div className="space-y-1">
+                  {chatHistory.map((chat) => (
+                    <div
+                      key={chat.id}
+                      className={`group relative flex items-start gap-2 px-3 py-2 rounded-lg transition-colors cursor-pointer ${
+                        activeChatId === chat.id
+                          ? 'bg-blue-50'
+                          : 'hover:bg-gray-100'
+                      }`}
+                      onClick={() => {
+                        onSelectChat?.(chat.id);
+                        if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+                          onToggle();
+                        }
+                      }}
+                    >
+                      <MessageSquare 
+                        className="w-4 h-4 mt-0.5 flex-shrink-0" 
+                        style={{ 
+                          color: activeChatId === chat.id ? '#0052FF' : '#6B7280' 
+                        }} 
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p 
+                          className={`text-sm truncate ${
+                            activeChatId === chat.id 
+                              ? 'font-medium' 
+                              : ''
+                          }`}
+                          style={{ 
+                            color: activeChatId === chat.id ? '#0052FF' : '#374151' 
+                          }}
+                        >
+                          {chat.title}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {formatTimestamp(chat.timestamp)}
+                        </p>
+                      </div>
+                      {onDeleteChat && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteChat(chat.id);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 rounded transition-all"
+                          title="Delete chat"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Empty State for Chat History */}
+          {isOpen && chatHistory.length === 0 && (
+            <div className="flex-1 flex items-center justify-center p-4">
+              <div className="text-center">
+                <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                <p className="text-xs text-gray-400">
+                  No chat history yet
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Collapsed State - Show icon only */}
+          {!isOpen && (
+            <div className="flex-1" />
+          )}
 
           {/* Footer */}
           <div className={`p-4 border-t ${!isOpen && 'lg:hidden'}`}>

@@ -4,12 +4,19 @@ import { useWallet } from '@/app/hooks/use-wallet';
 import { useBalance } from 'wagmi';
 import { Wallet } from 'lucide-react';
 import { formatEther } from 'viem';
+import { useEffect, useState } from 'react';
 
 /**
  * 헤더에 표시되는 ETH 잔액 컴포넌트
  */
 export function WalletBalance() {
   const { isAuthenticated, address, chainId } = useWallet();
+  const [isMounted, setIsMounted] = useState(false);
+
+  // 클라이언트에서만 마운트
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // ETH 잔액 조회
   const { data: balanceData, isLoading } = useBalance({
@@ -17,8 +24,8 @@ export function WalletBalance() {
     chainId: chainId,
   });
 
-  // 지갑이 연결되지 않았으면 표시 안 함
-  if (!isAuthenticated || !address) {
+  // 클라이언트 마운트 전이거나 지갑이 연결되지 않았으면 표시 안 함
+  if (!isMounted || !isAuthenticated || !address) {
     return null;
   }
 

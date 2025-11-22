@@ -1,0 +1,56 @@
+# LM Battle Project - Root .gitignore
+
+# Dependencies
+node_modules/
+
+# Package manager lock files (pnpm-only project)
+package-lock.json
+yarn.lock
+
+# Environment variables
+.env
+.env*.local
+!.env.example
+!env.template
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+dist/
+build/
+out/
+
+# Auto-generated CSS
+frontend/app/battle-styles.css
+**/battle-styles.css
+
+# Cache
+.cache/
+.temp/
+.tmp/
+
+# Coverage
+coverage/
+*.lcov
+
+# Misc
+*.pem
+*.key
+
+.playwright-mcp/

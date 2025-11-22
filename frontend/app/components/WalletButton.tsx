@@ -36,8 +36,18 @@ export function WalletButton() {
     isDisconnecting,
   } = useWalletStore();
 
-  // Privy 인증 상태를 Zustand 스토어에 동기화
+  // 클라이언트 마운트 상태
+  const [isMounted, setIsMounted] = useState(false);
+
+  // 클라이언트에서만 마운트
   useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // Privy 인증 상태를 Zustand 스토어에 동기화 (클라이언트에서만)
+  useEffect(() => {
+    if (!isMounted) return;
+    
     setAuthenticated(authenticated);
     
     if (authenticated && user) {
@@ -58,7 +68,7 @@ export function WalletButton() {
       setUserEmail(null);
       setChainId(null);
     }
-  }, [authenticated, user, address, chain, setAuthenticated, setUserAddress, setUserEmail, setChainId]);
+  }, [isMounted, authenticated, user, address, chain, setAuthenticated, setUserAddress, setUserEmail, setChainId]);
 
   // 로그인 처리
   const handleLogin = async () => {
@@ -112,8 +122,8 @@ export function WalletButton() {
     return chain.name;
   };
 
-  // Privy 초기화 대기 중
-  if (!ready) {
+  // 클라이언트 마운트 전이거나 Privy 초기화 대기 중
+  if (!isMounted || !ready) {
     return (
       <Button disabled variant="outline">
         Loading...

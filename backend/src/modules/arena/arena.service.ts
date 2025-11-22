@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../../lib/prisma";
 import { updateElo, EloOutcome } from "./elo";
 import { callFlockModel, judgeFlock } from "../../lib/flock";
+import { calculateConsistencyScore } from "../scoring/consistencyScore";
 
 // -------- 매치 생성 스키마 --------
 const createMatchSchema = z.object({
@@ -94,10 +95,10 @@ export const createMatchHandler = async (req: Request, res: Response) => {
     return res.json({
       matchId: match.id,
       prompt,
-      modelA,
-      modelB,
-      responseA,
-      responseB
+      modelAId: modelA.id,
+      modelBId: modelB.id,
+      responseA: responseAText,
+      responseB: responseBText
     });
   } catch (err: any) {
     console.error("❌ [MATCH ERROR]", err?.response?.data || err);
@@ -175,15 +176,22 @@ export const voteHandler = async (req: Request, res: Response) => {
     // 5) reference 점수 계산
     const referenceScore = refChoice === chosen ? REF_CORRECT_BONUS : 0;
 
-    const consensusScore = 0;
-    const consistencyScore = 0;
+    // 6) consistency 점수 계산 (최근 투표 패턴 기반)
+    const consistencyScore = await calculateConsistencyScore(user.id);
+
+    const consensusScore = 0; // 캠페인 종료 시 배치로 계산
     const totalScore =
       BASE_PARTICIPATION_SCORE +
       referenceScore +
       consensusScore +
       consistencyScore;
 
-    // 6) vote 업데이트
+    console.log(
+      `📊 [SCORE] User ${user.id}: participation=1, reference=${referenceScore}, ` +
+      `consistency=${consistencyScore}, total=${totalScore}`
+    );
+
+    // 7) vote 업데이트
     vote = await prisma.vote.update({
       where: { id: vote.id },
       data: {
@@ -194,7 +202,7 @@ export const voteHandler = async (req: Request, res: Response) => {
       }
     });
 
-    // 7) Elo 계산
+    // 8) Elo 계산
     const outcome: EloOutcome =
       chosen === "A" ? "A_WIN" : chosen === "B" ? "B_WIN" : "TIE";
 
@@ -221,7 +229,7 @@ export const voteHandler = async (req: Request, res: Response) => {
       })
     ]);
 
-    // 8) 유저 점수 업데이트
+    // 9) 유저 점수 업데이트
     const updatedUser = await prisma.user.update({
       where: { id: user.id },
       data: {
