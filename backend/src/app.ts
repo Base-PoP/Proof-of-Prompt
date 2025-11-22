@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 
 import { arenaRouter } from "./modules/arena/arena.routes";
 import { leaderboardRouter } from "./modules/leaderboard/leaderboard.routes";
+import mockRouter from "./modules/mock/mock.routes";
 dotenv.config();
 
 export const createApp = () => {
@@ -43,6 +44,9 @@ export const createApp = () => {
 
   // arena 라우터
   app.use("/arena", arenaRouter);
+
+  // mock 라우터
+  app.use("/mock", mockRouter);
 
   // leaderboard 라우터
   app.use("/leaderboard", leaderboardRouter);
