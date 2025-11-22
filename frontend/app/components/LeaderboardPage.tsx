@@ -1,47 +1,62 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Card } from './ui/card';
-import { Trophy, TrendingUp, TrendingDown, Users, Zap } from 'lucide-react';
+import { Trophy, TrendingUp, TrendingDown, Users, Loader2 } from 'lucide-react';
+import { leaderboardApi } from '../../lib/api';
 
 interface ModelRanking {
   rank: number;
+  id: string;
   name: string;
-  score: number;
-  votes: number;
-  change: number;
+  provider: string;
+  rating: number;
+  gamesPlayed: number;
 }
 
 interface UserRanking {
   rank: number;
-  username: string;
+  id: string;
+  nickname: string;
   score: number;
-  promptsSubmitted: number;
-  qualityRating: number;
-  change: number;
 }
 
 export function LeaderboardPage() {
-  const modelRankings: ModelRanking[] = [
-    { rank: 1, name: 'GPT-4', score: 1285, votes: 15420, change: 2 },
-    { rank: 2, name: 'Claude 3 Opus', score: 1268, votes: 14850, change: 1 },
-    { rank: 3, name: 'Gemini Pro', score: 1242, votes: 13920, change: -1 },
-    { rank: 4, name: 'Claude 3 Sonnet', score: 1215, votes: 12580, change: 0 },
-    { rank: 5, name: 'GPT-3.5 Turbo', score: 1198, votes: 11340, change: -2 },
-    { rank: 6, name: 'Llama 3', score: 1175, votes: 10230, change: 3 },
-    { rank: 7, name: 'Mistral Large', score: 1156, votes: 9850, change: 1 },
-    { rank: 8, name: 'Claude 3 Haiku', score: 1142, votes: 8920, change: -1 },
-  ];
+  const [modelRankings, setModelRankings] = useState<ModelRanking[]>([]);
+  const [userRankings, setUserRankings] = useState<UserRanking[]>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(true);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const userRankings: UserRanking[] = [
-    { rank: 1, username: 'PromptMaster', score: 8542, promptsSubmitted: 234, qualityRating: 9.2, change: 0 },
-    { rank: 2, username: 'AIWhisperer', score: 8125, promptsSubmitted: 198, qualityRating: 9.0, change: 2 },
-    { rank: 3, username: 'BaseBuilder', score: 7890, promptsSubmitted: 215, qualityRating: 8.8, change: -1 },
-    { rank: 4, username: 'QueryQueen', score: 7654, promptsSubmitted: 187, qualityRating: 8.7, change: 1 },
-    { rank: 5, username: 'PromptNinja', score: 7432, promptsSubmitted: 176, qualityRating: 8.5, change: -2 },
-    { rank: 6, username: 'CodeCrafter', score: 7215, promptsSubmitted: 165, qualityRating: 8.4, change: 0 },
-    { rank: 7, username: 'AIEnthusiast', score: 6998, promptsSubmitted: 154, qualityRating: 8.2, change: 3 },
-    { rank: 8, username: 'BaseChamp', score: 6742, promptsSubmitted: 142, qualityRating: 8.0, change: 1 },
-  ];
+  useEffect(() => {
+    const fetchLeaderboards = async () => {
+      try {
+        // Fetch model rankings
+        setIsLoadingModels(true);
+        const models = await leaderboardApi.getModels();
+        setModelRankings(models);
+      } catch (err) {
+        console.error('Failed to fetch model rankings:', err);
+        setError('Failed to load model rankings');
+      } finally {
+        setIsLoadingModels(false);
+      }
+
+      try {
+        // Fetch user rankings
+        setIsLoadingUsers(true);
+        const users = await leaderboardApi.getUsers();
+        setUserRankings(users);
+      } catch (err) {
+        console.error('Failed to fetch user rankings:', err);
+        setError('Failed to load user rankings');
+      } finally {
+        setIsLoadingUsers(false);
+      }
+    };
+
+    fetchLeaderboards();
+  }, []);
 
   const getRankColor = (rank: number) => {
     if (rank === 1) return '#FFD700';
@@ -61,6 +76,12 @@ export function LeaderboardPage() {
         </p>
       </div>
 
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          {error}
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Model Leaderboard */}
         <div className="flex flex-col">
@@ -71,69 +92,70 @@ export function LeaderboardPage() {
           
           <div className="overflow-hidden border-2 shadow-sm flex flex-col bg-white rounded-xl" style={{ borderColor: '#0052FF20', height: '600px', minHeight: '600px', maxHeight: '600px' }}>
             <div className="overflow-x-auto flex-1" style={{ height: '100%', overflowY: 'auto' }}>
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Rank</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Model</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Elo</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Δ</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {modelRankings.map((model) => (
-                    <tr 
-                      key={model.rank}
-                      className="hover:bg-blue-50/30 transition-colors duration-150 border-l-4 border-transparent hover:border-gray-200"
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          {model.rank <= 3 && (
-                            <Trophy 
-                              className="w-4 h-4" 
-                              style={{ color: getRankColor(model.rank) }}
-                            />
-                          )}
-                          <span 
-                            className="text-sm"
-                            style={{ 
-                              color: model.rank <= 3 ? getRankColor(model.rank) : '#000',
-                              fontWeight: model.rank <= 3 ? '600' : '400'
-                            }}
-                          >
-                            #{model.rank}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-sm">{model.name}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-sm" style={{ color: '#0052FF' }}>
-                          {model.score}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-center gap-1">
-                          {model.change > 0 ? (
-                            <>
-                              <TrendingUp className="w-3 h-3 text-green-600" />
-                              <span className="text-xs text-green-600">+{model.change}</span>
-                            </>
-                          ) : model.change < 0 ? (
-                            <>
-                              <TrendingDown className="w-3 h-3 text-red-600" />
-                              <span className="text-xs text-red-600">{model.change}</span>
-                            </>
-                          ) : (
-                            <span className="text-xs text-gray-400">-</span>
-                          )}
-                        </div>
-                      </td>
+              {isLoadingModels ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#0052FF' }} />
+                </div>
+              ) : modelRankings.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-gray-500">
+                  No model rankings available
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Rank</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Model</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Elo</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Games</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {modelRankings.map((model) => (
+                      <tr 
+                        key={model.id}
+                        className="hover:bg-blue-50/30 transition-colors duration-150 border-l-4 border-transparent hover:border-gray-200"
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            {model.rank <= 3 && (
+                              <Trophy 
+                                className="w-4 h-4" 
+                                style={{ color: getRankColor(model.rank) }}
+                              />
+                            )}
+                            <span 
+                              className="text-sm"
+                              style={{ 
+                                color: model.rank <= 3 ? getRankColor(model.rank) : '#000',
+                                fontWeight: model.rank <= 3 ? '600' : '400'
+                              }}
+                            >
+                              #{model.rank}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div>
+                            <p className="text-sm font-medium">{model.name}</p>
+                            <p className="text-xs text-gray-500">{model.provider}</p>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="text-sm font-semibold" style={{ color: '#0052FF' }}>
+                            {model.rating}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="text-xs text-gray-500">
+                            {model.gamesPlayed}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
           
@@ -146,92 +168,71 @@ export function LeaderboardPage() {
         <div className="flex flex-col">
           <div className="flex items-center gap-2 mb-4">
             <Users className="w-6 h-6" style={{ color: '#0052FF' }} />
-            <h2 className="text-xl">Prompt Creator Rankings</h2>
+            <h2 className="text-xl">User Rankings</h2>
           </div>
           
           <div className="overflow-hidden border-2 shadow-sm flex flex-col bg-white rounded-xl" style={{ borderColor: '#0052FF20', height: '600px', minHeight: '600px', maxHeight: '600px' }}>
             <div className="overflow-x-auto flex-1" style={{ height: '100%', overflowY: 'auto' }}>
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Rank</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">User</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Score</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Δ</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {userRankings.map((user) => (
-                    <tr 
-                      key={user.rank}
-                      className="hover:bg-blue-50/30 transition-colors duration-150 border-l-4 border-transparent hover:border-gray-200"
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          {user.rank <= 3 && (
-                            <Trophy 
-                              className="w-4 h-4" 
-                              style={{ color: getRankColor(user.rank) }}
-                            />
-                          )}
-                          <span 
-                            className="text-sm"
-                            style={{ 
-                              color: user.rank <= 3 ? getRankColor(user.rank) : '#000',
-                              fontWeight: user.rank <= 3 ? '600' : '400'
-                            }}
-                          >
-                            #{user.rank}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div>
-                          <p className="text-sm">{user.username}</p>
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <Zap className="w-3 h-3 text-yellow-500" />
-                            <span className="text-xs text-gray-500">
-                              {user.qualityRating}/10 quality
+              {isLoadingUsers ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#0052FF' }} />
+                </div>
+              ) : userRankings.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-gray-500">
+                  No user rankings available
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Rank</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">User</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Score</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {userRankings.map((user) => (
+                      <tr 
+                        key={user.id}
+                        className="hover:bg-blue-50/30 transition-colors duration-150 border-l-4 border-transparent hover:border-gray-200"
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            {user.rank <= 3 && (
+                              <Trophy 
+                                className="w-4 h-4" 
+                                style={{ color: getRankColor(user.rank) }}
+                              />
+                            )}
+                            <span 
+                              className="text-sm"
+                              style={{ 
+                                color: user.rank <= 3 ? getRankColor(user.rank) : '#000',
+                                fontWeight: user.rank <= 3 ? '600' : '400'
+                              }}
+                            >
+                              #{user.rank}
                             </span>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div>
-                          <p className="text-sm" style={{ color: '#0052FF' }}>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="text-sm">{user.nickname}</p>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <p className="text-sm font-semibold" style={{ color: '#0052FF' }}>
                             {user.score.toLocaleString()}
                           </p>
-                          <p className="text-xs text-gray-500">
-                            {user.promptsSubmitted} prompts
-                          </p>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-center gap-1">
-                          {user.change > 0 ? (
-                            <>
-                              <TrendingUp className="w-3 h-3 text-green-600" />
-                              <span className="text-xs text-green-600">+{user.change}</span>
-                            </>
-                          ) : user.change < 0 ? (
-                            <>
-                              <TrendingDown className="w-3 h-3 text-red-600" />
-                              <span className="text-xs text-red-600">{user.change}</span>
-                            </>
-                          ) : (
-                            <span className="text-xs text-gray-400">-</span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
           
           <div className="mt-3 text-center text-xs text-gray-500">
-            <p>Based on prompt quality and community engagement</p>
+            <p>Based on voting participation</p>
           </div>
         </div>
       </div>

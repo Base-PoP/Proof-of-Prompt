@@ -25,6 +25,8 @@ model Model {
   matchesAsA  Match[]  @relation("ModelA")
   matchesAsB  Match[]  @relation("ModelB")
   responses   Response[]
+  campaignsAsA Campaign[] @relation("CampaignModelA")
+  campaignsAsB Campaign[] @relation("CampaignModelB")
 
   @@index([rating, gamesPlayed])
 }
@@ -40,8 +42,74 @@ model User {
 
   prompts   Prompt[]
   votes     Vote[]
+  campaignRewards CampaignReward[]
 
   @@index([score, createdAt])
+}
+
+// ---------------------------
+// Model: Campaign (Prize Battle)
+// ---------------------------
+model Campaign {
+  id          Int       @id @default(autoincrement())
+  title       String
+  description String?
+  
+  // 스폰서 정보
+  sponsorName String
+  sponsorType String    // "company", "foundation", "individual"
+  
+  // 프라이즈 정보
+  prizeAmount Float
+  prizeCurrency String  @default("USD")
+  
+  // 평가할 모델들
+  modelAId    Int
+  modelBId    Int
+  modelA      Model     @relation("CampaignModelA", fields: [modelAId], references: [id])
+  modelB      Model     @relation("CampaignModelB", fields: [modelBId], references: [id])
+  
+  // 기간
+  startDate   DateTime  @default(now())
+  endDate     DateTime
+  
+  // 상태
+  status      String    @default("active") // "active", "closed", "rewarded"
+  
+  // 통계
+  totalVotes  Int       @default(0)
+  
+  createdAt   DateTime  @default(now())
+  closedAt    DateTime?
+  
+  matches     Match[]
+  rewards     CampaignReward[]
+  
+  @@index([status, endDate])
+  @@index([sponsorName])
+}
+
+// ---------------------------
+// Model: CampaignReward (프라이즈 분배 기록)
+// ---------------------------
+model CampaignReward {
+  id          Int       @id @default(autoincrement())
+  campaignId  Int
+  userId      Int
+  
+  campaign    Campaign  @relation(fields: [campaignId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
+  
+  // 보상 계산
+  consensusScore Float
+  totalVotes     Int
+  rewardAmount   Float
+  
+  createdAt   DateTime  @default(now())
+  
+  @@unique([campaignId, userId])
+  @@index([campaignId])
+  @@index([userId])
 }
 
 // ---------------------------
@@ -66,13 +134,17 @@ model Match {
   promptId   Int
   modelAId   Int
   modelBId   Int
+  campaignId Int?      // 캠페인에 속한 매치인지
 
   prompt     Prompt    @relation(fields: [promptId], references: [id], onDelete: Cascade)
   modelA     Model     @relation("ModelA", fields: [modelAId], references: [id], onDelete: Cascade)
   modelB     Model     @relation("ModelB", fields: [modelBId], references: [id], onDelete: Cascade)
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
 
   responses  Response[]
   votes      Vote[]
+  
+  @@index([campaignId])
 }
 
 // ---------------------------
