@@ -1,82 +1,189 @@
+// ---------------------------
+// Generator & Datasource
+// ---------------------------
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
-}
-
-model User {
-  id        Int      @id @default(autoincrement())
-  nickname  String?
-  createdAt DateTime @default(now())
-
-  prompts Prompt[]
-  votes   Vote[]
-}
-
+// ---------------------------
+// Model: LLM Model
+// ---------------------------
 model Model {
-  id         Int      @id @default(autoincrement())
-  name       String // gpt-4.1 같은 별칭
-  provider   String // openai, anthropic, etc
-  apiModelId String // 실제 API 모델명
-  createdAt  DateTime @default(now())
+  id          Int      @id @default(autoincrement())
+  name        String
+  provider    String
+  apiModelId  String
+  rating      Float    @default(1500)
+  gamesPlayed Int      @default(0)
+
+  // Relations
+  matchesAsA  Match[]  @relation("ModelA")
+  matchesAsB  Match[]  @relation("ModelB")
+  responses   Response[]
+  campaignsAsA Campaign[] @relation("CampaignModelA")
+  campaignsAsB Campaign[] @relation("CampaignModelB")
+
+  @@index([rating, gamesPlayed])
+}
+
+// ---------------------------
+// Model: User
+// ---------------------------
+model User {
+  id        Int       @id @default(autoincrement())
+  nickname  String
+  createdAt DateTime  @default(now())
+  score     Float     @default(0)
+
+  prompts   Prompt[]
+  votes     Vote[]
+  campaignRewards CampaignReward[]
+
+  @@index([score, createdAt])
+}
+
+// ---------------------------
+// Model: Campaign (Prize Battle)
+// ---------------------------
+model Campaign {
+  id          Int       @id @default(autoincrement())
+  title       String
+  description String?
+  
+  // 스폰서 정보
+  sponsorName String
+  sponsorType String    // "company", "foundation", "individual"
+  
+  // 프라이즈 정보
+  prizeAmount Float
+  prizeCurrency String  @default("USD")
+  
+  // 평가할 모델들
+  modelAId    Int
+  modelBId    Int
+  modelA      Model     @relation("CampaignModelA", fields: [modelAId], references: [id])
+  modelB      Model     @relation("CampaignModelB", fields: [modelBId], references: [id])
+  
+  // 기간
+  startDate   DateTime  @default(now())
+  endDate     DateTime
+  
+  // 상태
+  status      String    @default("active") // "active", "closed", "rewarded"
+  
+  // 통계
+  totalVotes  Int       @default(0)
+  
+  createdAt   DateTime  @default(now())
+  closedAt    DateTime?
+  
+  matches     Match[]
+  rewards     CampaignReward[]
+  
+  @@index([status, endDate])
+  @@index([sponsorName])
+}
+
+// ---------------------------
+// Model: CampaignReward (프라이즈 분배 기록)
+// ---------------------------
+model CampaignReward {
+  id          Int       @id @default(autoincrement())
+  campaignId  Int
+  userId      Int
+  
+  campaign    Campaign  @relation(fields: [campaignId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
+  
+  // 보상 계산
+  consensusScore Float
+  totalVotes     Int
+  rewardAmount   Float
+  
+  createdAt   DateTime  @default(now())
+  
+  @@unique([campaignId, userId])
+  @@index([campaignId])
+  @@index([userId])
+}
+
+// ---------------------------
+// Model: Prompt
+// ---------------------------
+model Prompt {
+  id        Int       @id @default(autoincrement())
+  text      String
+  userId    Int?
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime  @default(now())
+
+  matches   Match[]
+}
+
+// ---------------------------
+// Model: Match
+// ---------------------------
+model Match {
+  id         Int       @id @default(autoincrement())
+
+  promptId   Int
+  modelAId   Int
+  modelBId   Int
+  campaignId Int?      // 캠페인에 속한 매치인지
+
+  prompt     Prompt    @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  modelA     Model     @relation("ModelA", fields: [modelAId], references: [id], onDelete: Cascade)
+  modelB     Model     @relation("ModelB", fields: [modelBId], references: [id], onDelete: Cascade)
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
 
   responses  Response[]
-  matchesAsA Match[]    @relation("MatchModelA")
-  matchesAsB Match[]    @relation("MatchModelB")
+  votes      Vote[]
+  
+  @@index([campaignId])
 }
 
-model Prompt {
-  id        Int      @id @default(autoincrement())
-  userId    Int?
-  text      String
-  createdAt DateTime @default(now())
-
-  user    User?   @relation(fields: [userId], references: [id])
-  matches Match[]
-}
-
-model Match {
-  id        Int      @id @default(autoincrement())
-  promptId  Int
-  modelAId  Int
-  modelBId  Int
-  createdAt DateTime @default(now())
-
-  prompt    Prompt     @relation(fields: [promptId], references: [id])
-  modelA    Model      @relation("MatchModelA", fields: [modelAId], references: [id])
-  modelB    Model      @relation("MatchModelB", fields: [modelBId], references: [id])
-  responses Response[]
-  votes     Vote[]
-}
-
+// ---------------------------
+// Model: Response
+// ---------------------------
 model Response {
-  id        Int    @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   matchId   Int
   modelId   Int
-  position  String // "A" or "B"
+  position  String
   content   String
-  latencyMs Int?
+  createdAt DateTime @default(now())
 
-  match Match @relation(fields: [matchId], references: [id])
-  model Model @relation(fields: [modelId], references: [id])
+  match     Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  model     Model     @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@index([matchId])
+  @@index([modelId])
 }
 
+// ---------------------------
+// Model: Vote
+// ---------------------------
 model Vote {
   id             Int      @id @default(autoincrement())
   matchId        Int
   userId         Int?
-  chosenPosition String // "A" or "B"
+  chosenPosition String
   createdAt      DateTime @default(now())
 
-  match Match @relation(fields: [matchId], references: [id])
-  user  User? @relation(fields: [userId], references: [id])
+  match          Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  // 나중에 점수 로직(컨센서스/레퍼런스/일관성)을 위해 남겨둔 컬럼들
   consensusScore   Float @default(0)
   referenceScore   Float @default(0)
   consistencyScore Float @default(0)
   totalScore       Float @default(0)
+
+  @@index([matchId])
+  @@index([userId])
+  @@index([createdAt])
 }
