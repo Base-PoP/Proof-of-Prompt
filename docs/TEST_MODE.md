@@ -13,15 +13,8 @@
 
 ### 2. 테스트 모드 활성화
 
-**파일:** `frontend/lib/api.ts`
-
-```typescript
-// 테스트 모드: 백엔드 대신 로컬 스토리지 사용
-const USE_MOCK_DATA = true;
-```
-
-- `USE_MOCK_DATA = true`: 목 데이터 사용 (테스트 모드)
-- `USE_MOCK_DATA = false`: 실제 백엔드 API 호출
+- `.env.local`에서 `NEXT_PUBLIC_USE_MOCK_DATA=true` 설정
+- 기본값은 false이며, true일 때만 프론트가 로컬스토리지 목 데이터를 사용합니다.
 
 ### 3. 샘플 데이터 구성
 
@@ -140,11 +133,9 @@ location.reload();
 
 테스트 완료 후 실제 백엔드를 사용하려면:
 
-**파일:** `frontend/lib/api.ts`
-
-```typescript
-// 테스트 모드 비활성화
-const USE_MOCK_DATA = false;
+**환경 변수:** `.env.local`
+```
+NEXT_PUBLIC_USE_MOCK_DATA=false
 ```
 
 이제 실제 백엔드 API가 호출됩니다:

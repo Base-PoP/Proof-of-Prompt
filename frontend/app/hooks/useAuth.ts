@@ -21,14 +21,33 @@ export function useAuth() {
 
   // Privy 인증 상태를 Zustand 스토어와 동기화
   useEffect(() => {
-    if (authenticated && address) {
+    let walletAddress = address || user?.wallet?.address;
+
+    // Fallback: Check localStorage for Privy connections if user object is not ready
+    if (!walletAddress) {
+      try {
+        const privyConnections = localStorage.getItem('privy:connections');
+        if (privyConnections) {
+          const connections = JSON.parse(privyConnections);
+          if (Array.isArray(connections) && connections.length > 0) {
+            walletAddress = connections[0].address;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse privy:connections', e);
+      }
+    }
+
+    if (walletAddress) {
       setAuthenticated(true);
-      setUserAddress(address);
+      setUserAddress(walletAddress);
       setUserEmail(user?.email?.address || null);
-    } else if (!authenticated) {
+    } else if (!authenticated && ready) {
+      // Only reset if we are sure we are not authenticated and Privy is ready
+      // And we couldn't find any address in localStorage
       reset();
     }
-  }, [authenticated, address, user, setAuthenticated, setUserAddress, setUserEmail, reset]);
+  }, [authenticated, ready, address, user, setAuthenticated, setUserAddress, setUserEmail, reset]);
 
   /**
    * 권한이 필요한 작업 실행

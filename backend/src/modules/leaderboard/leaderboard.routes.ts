@@ -9,7 +9,7 @@ leaderboardRouter.get("/models", async (_req, res) => {
     include: {
       matchesAsA: {
         include: {
-          post: true
+          prompt: true
         }
       }
     }
@@ -19,8 +19,8 @@ leaderboardRouter.get("/models", async (_req, res) => {
     // 모델이 응답을 생성한 총 횟수 (단일 모델 시스템이므로 matchesAsA만 사용)
     const totalMatches = model.matchesAsA.length;
     
-    // 게시판에 올라간 횟수 (Post는 항상 modelA만 사용)
-    const postedMatches = model.matchesAsA.filter(m => m.post !== null).length;
+    // 게시판에 올라간 횟수 (Prompt.isShared == true)
+    const postedMatches = model.matchesAsA.filter(m => m.prompt.isShared).length;
     
     // 채택률 계산 (백분율)
     const adoptionRate = totalMatches > 0 
@@ -39,7 +39,12 @@ leaderboardRouter.get("/models", async (_req, res) => {
   });
 
   // 채택률 기준으로 정렬 (높은 순)
-  modelStats.sort((a, b) => b.adoptionRate - a.adoptionRate);
+  modelStats.sort((a, b) => {
+    if (b.adoptionRate !== a.adoptionRate) {
+      return b.adoptionRate - a.adoptionRate;
+    }
+    return b.postedMatches - a.postedMatches;
+  });
 
   const result = modelStats.map((m, idx) => ({
     rank: idx + 1,
@@ -53,7 +58,8 @@ leaderboardRouter.get("/models", async (_req, res) => {
 leaderboardRouter.get("/users", async (_req, res) => {
   const users = await prisma.user.findMany({
     include: {
-      posts: {
+      prompts: {
+        where: { isShared: true },
         select: {
           likes: true
         }
@@ -62,17 +68,17 @@ leaderboardRouter.get("/users", async (_req, res) => {
   });
 
   const userStats = users.map(user => {
-    // 유저의 모든 게시글이 받은 총 좋아요 수
-    const totalLikes = user.posts.reduce((sum, post) => sum + post.likes, 0);
+    // 유저의 공유된 프롬프트들이 받은 총 좋아요 수
+    const totalLikes = user.prompts.reduce((sum, prompt) => sum + prompt.likes, 0);
     
-    // 점수 = 좋아요 수 × 10
-    const score = totalLikes * 10;
+    // 점수 = (좋아요 수 × 10) + 공유된 프롬프트 개수
+    const score = (totalLikes * 10) + user.prompts.length;
 
     return {
       id: user.id,
       nickname: user.nickname,
       totalLikes,
-      postsCount: user.posts.length,
+      postsCount: user.prompts.length, // sharedPromptCount
       score
     };
   });

@@ -2,20 +2,62 @@ import { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma";
 import { callFlockModel, callFlockModelStream } from "../../lib/flock";
+import { ALLOWED_CATEGORIES, normalizeCategory } from "../prompts/category";
+import { buildPaymentRequiredPayload, recordPaymentAuthorization, paymentConstants } from "../../lib/payment";
 
 // -------- 채팅 생성 스키마 (단일 모델) --------
 const createChatSchema = z.object({
   prompt: z.string().min(1),
-  userId: z.coerce.number().optional()
+  userId: z.coerce.number().optional(),
+  walletAddress: z.string().optional()
 });
 
 // -------- Post 생성 스키마 --------
 const createPostSchema = z.object({
   matchId: z.coerce.number(),
-  title: z.string().min(1).max(100),
+  title: z.string().min(1).max(100).optional(),
   walletAddress: z.string().optional(),
   tags: z.array(z.string()).optional()
 });
+
+const { COST_PER_CHAT, PAYMENT_TOKEN, PAY_TO_ADDRESS, CHAIN_ID } = paymentConstants;
+
+// -------- LLM을 이용한 제목·카테고리 자동 생성 --------
+async function generatePostMetadata(prompt: string, response: string): Promise<{ title: string; category: string }> {
+  const metadataPrompt = `
+You are a content categorization assistant. Given a user prompt and AI response, generate:
+1. A short, descriptive title (max 100 characters)
+2. One category from exactly this list: ${ALLOWED_CATEGORIES.join(", ")}
+
+User Prompt:
+${prompt}
+
+AI Response:
+${response.substring(0, 500)}...
+
+Reply in JSON format ONLY:
+{"title": "...", "category": "..."}
+`;
+
+  try {
+    const result = await callFlockModel("qwen3-235b-a22b-instruct-2507", metadataPrompt);
+    const parsed = JSON.parse(result.trim());
+
+    // 카테고리 검증 및 정규화
+    const category = normalizeCategory(parsed.category);
+
+    return {
+      title: parsed.title.substring(0, 100),
+      category
+    };
+  } catch (err) {
+    console.error('Failed to generate metadata:', err);
+    return {
+      title: prompt.substring(0, 100),
+      category: normalizeCategory("기타")
+    };
+  }
+}
 
 /* ------------------------------------------------------------------ */
 /*  1. 채팅 생성: /arena/chat (단일 모델 응답)                         */
@@ -26,7 +68,28 @@ export const createChatHandler = async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Invalid body" });
   }
 
-  const { prompt, userId } = parsed.data;
+  const { prompt, userId, walletAddress } = parsed.data;
+  const paymentAuthorization = req.headers['x-payment-authorization'] as string | undefined;
+
+  if (!walletAddress) {
+    return res.status(400).json({ error: "walletAddress is required for payment" });
+  }
+
+  // ------------------------------------------------------------------
+  // [x402] Payment Check with simulated allowance (persisted in DB)
+  // ------------------------------------------------------------------
+  if (!paymentAuthorization) {
+    return res.status(402).json({
+      error: "Payment Required",
+      payment: buildPaymentRequiredPayload()
+    });
+  }
+
+  try {
+    await recordPaymentAuthorization(walletAddress, paymentAuthorization);
+  } catch (err: any) {
+    return res.status(400).json({ error: err?.message || "Invalid payment authorization" });
+  }
 
   try {
     // Postman 헤더로 인해 Flock 호출 시 충돌 방지
@@ -107,7 +170,34 @@ export const createChatStreamHandler = async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Invalid body" });
   }
 
-  const { prompt, userId } = parsed.data;
+  const { prompt, userId, walletAddress } = parsed.data;
+  const paymentAuthorization = req.headers['x-payment-authorization'] as string | undefined;
+
+  if (!walletAddress) {
+    return res.status(400).json({ error: "walletAddress is required for payment" });
+  }
+
+  // ------------------------------------------------------------------
+  // [x402] Payment Check (Stream)
+  // ------------------------------------------------------------------
+  if (!paymentAuthorization) {
+    return res.status(402).json({
+      error: "Payment Required",
+      payment: {
+        chainId: CHAIN_ID, // Base Sepolia Testnet
+        token: PAYMENT_TOKEN,
+        pay_to_address: PAY_TO_ADDRESS, // Treasury placeholder
+        amount: COST_PER_CHAT.toString(), // 0.1 USDC per chat
+        message: "결제용 서명(authorization)이 필요합니다. 지갑에서 서명 후 다시 요청하세요."
+      }
+    });
+  }
+
+  try {
+    await recordPaymentAuthorization(walletAddress, paymentAuthorization);
+  } catch (err: any) {
+    return res.status(400).json({ error: err?.message || "Invalid payment authorization" });
+  }
 
   try {
     delete req.headers["x-api-key"];
@@ -182,21 +272,22 @@ export const createChatStreamHandler = async (req: Request, res: Response) => {
 
   } catch (err: any) {
     console.error("❌ [STREAM CHAT ERROR]", err?.response?.data || err);
+
     res.write(`data: ${JSON.stringify({ type: 'error', error: 'Failed to generate response' })}\n\n`);
     res.end();
   }
 };
 
 /* ------------------------------------------------------------------ */
-/*  2. Post 생성: /arena/post (모델 정보 공개하며 게시)                */
+/*  2. Prompt 공유: /arena/share (LLM 제목/카테고리 생성 + 공유)         */
 /* ------------------------------------------------------------------ */
-export const createPostHandler = async (req: Request, res: Response) => {
+export const sharePromptHandler = async (req: Request, res: Response) => {
   const parsed = createPostSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid body" });
   }
 
-  const { matchId, title, walletAddress, tags } = parsed.data;
+  const { matchId, title: providedTitle, walletAddress, tags } = parsed.data;
 
   try {
     // 1) match 조회
@@ -218,11 +309,59 @@ export const createPostHandler = async (req: Request, res: Response) => {
       return res.status(500).json({ error: "Response missing" });
     }
 
-    console.log("📝 [POST] Creating post for match:", matchId);
+    console.log("📝 [SHARE] Sharing prompt for match:", matchId);
 
-    // 2) walletAddress가 있으면 User 찾기 또는 생성
-    let userId: number | undefined;
-    if (walletAddress) {
+    // 2) 이미 공유된 Prompt인지 확인
+    if (match.prompt.isShared) {
+      console.log("ℹ️ [SHARE] Prompt already shared:", match.prompt.id);
+      return res.json({
+        ok: true,
+        prompt: {
+          id: match.prompt.id,
+          matchId: match.id,
+          title: match.prompt.title,
+          category: match.prompt.category,
+          prompt: match.prompt.text,
+          response: response.content,
+          userId: match.prompt.userId,
+          modelId: match.modelA.id,
+          modelName: match.modelA.name,
+          modelProvider: match.modelA.provider,
+          likes: match.prompt.likes,
+          createdAt: match.prompt.createdAt.toISOString()
+        }
+      });
+    }
+
+    // 3) LLM으로 제목·카테고리 자동 생성 (providedTitle이 없으면)
+    let title = providedTitle;
+    let category = "기타";
+
+    if (!title) {
+      const metadata = await generatePostMetadata(
+        match.prompt.text,
+        response.content
+      );
+      title = metadata.title;
+      category = metadata.category;
+    } else {
+      // 카테고리는 기본값 혹은 별도 로직 (여기선 자동생성 로직 태움)
+       const metadata = await generatePostMetadata(
+        match.prompt.text,
+        response.content
+      );
+      category = metadata.category;
+    }
+    
+    console.log("🤖 [LLM] Generated metadata:", { title, category });
+
+    // 4) walletAddress가 있으면 User 찾기 또는 생성 (작성자 연결)
+    // Prompt가 이미 생성될 때 userId가 있을 수 있음.
+    // 만약 익명으로 채팅했다가 공유 시점에 지갑 연결하면 업데이트?
+    // 여기서는 기존 Prompt의 userId를 유지하거나, 없으면 업데이트하는 식으로 처리
+    let userId = match.prompt.userId;
+    
+    if (walletAddress && !userId) {
       let user = await prisma.user.findFirst({
         where: { nickname: walletAddress }
       });
@@ -235,75 +374,76 @@ export const createPostHandler = async (req: Request, res: Response) => {
         });
         console.log("👤 [USER] Created new user:", user.id);
       }
-
       userId = user.id;
     }
 
-    // 3) Post로 DB에 저장
-    const post = await prisma.post.create({
+    // 5) Prompt 업데이트 (Share)
+    const normalizedCategory = normalizeCategory(category);
+    
+    const updatedPrompt = await prisma.prompt.update({
+      where: { id: match.prompt.id },
       data: {
-        matchId: match.id,
-        title: title,
-        likes: 0,
-        ...(userId && { userId })
+        title,
+        category: normalizedCategory,
+        isShared: true,
+        ...(userId && { userId }) // 유저 연결
       }
     });
 
-    // 4) 태그 처리
-    if (tags && tags.length > 0) {
-      for (const tagName of tags) {
-        // 태그가 없으면 생성, 있으면 가져오기
-        const tag = await prisma.tag.upsert({
-          where: { name: tagName },
-          create: { name: tagName },
-          update: {}
-        });
+    // 6) 태그 처리 (Optional - 스키마에서 삭제했으므로 제외하거나 별도 테이블 필요. 
+    // 현재 스키마 변경 계획에서 Tag 테이블 삭제했으므로 로직 제거)
 
-        // PostTag 관계 생성
-        await prisma.postTag.create({
-          data: {
-            postId: post.id,
-            tagId: tag.id
-          }
-        });
-      }
-    }
-
-    // 5) 생성된 태그 조회
-    const postWithTags = await prisma.post.findUnique({
-      where: { id: post.id },
-      include: {
-        postTags: {
-          include: {
-            tag: true
-          }
-        }
-      }
-    });
-
-    // 6) Post 정보 반환 (모델 정보 + 태그 포함)
+    // 7) 결과 반환
     return res.json({
       ok: true,
-      post: {
-        id: post.id,
+      prompt: {
+        id: updatedPrompt.id,
         matchId: match.id,
-        title: title,
-        prompt: match.prompt.text,
+        title: updatedPrompt.title,
+        category: updatedPrompt.category,
+        prompt: updatedPrompt.text,
         response: response.content,
-        userId: post.userId,
+        userId: updatedPrompt.userId,
         modelId: match.modelA.id,
         modelName: match.modelA.name,
         modelProvider: match.modelA.provider,
-        likes: post.likes,
-        tags: postWithTags?.postTags.map(pt => pt.tag.name) || [],
-        createdAt: post.createdAt.toISOString()
+        likes: updatedPrompt.likes,
+        createdAt: updatedPrompt.createdAt.toISOString()
       }
     });
+
   } catch (err: any) {
-    console.error("❌ [POST ERROR]", err);
+    console.error("❌ [SHARE ERROR]", err);
     return res.status(500).json({
-      error: "Failed to create post",
+      error: "Failed to share prompt",
       detail: String(err)
     });
   }
 };
+
+// Payment authorization nonce 기록 (실제 EIP-3009 검증/브로드캐스트는 추후 연동)
+async function recordAuthorization(walletAddress: string, rawAuth: string) {
+  let parsed: any;
+  try {
+    parsed = typeof rawAuth === "string" ? JSON.parse(rawAuth) : rawAuth;
+  } catch {
+    parsed = null;
+  }
+
+  const nonce = parsed?.nonce || `pseudo-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const validBefore = parsed?.validBefore ? BigInt(parsed.validBefore) : undefined;
+
+  // nonce 재사용 방지
+  const exists = await prisma.paymentAuthorization.findUnique({ where: { nonce } });
+  if (exists) {
+    throw new Error("Payment authorization already used");
+  }
+
+  await prisma.paymentAuthorization.create({
+    data: {
+      walletAddress,
+      nonce,
+      validBefore,
+    }
+  });
+}

@@ -136,42 +136,28 @@ async function main() {
   }
   console.log(`✅ ${users.length} users seeded`);
 
-  // 3. 태그
-  const tagNames = [
-    "AI",
-    "코딩",
-    "수학",
-    "철학",
-    "창작",
-    "비즈니스",
-    "과학",
-    "일상",
-  ];
-  const tags = [];
-
-  for (const t of tagNames) {
-    let tag = await prisma.tag.findFirst({ where: { name: t } });
-    if (!tag) {
-      tag = await prisma.tag.create({
-        data: { name: t },
-      });
-    }
-    tags.push(tag);
-  }
-  console.log(`✅ ${tags.length} tags seeded`);
-
-  // 4. 랜덤 포스트 15개 생성
-  const POST_COUNT = 15;
+  // 3. 랜덤 프롬프트 및 공유 (Post 대체) 15개 생성
+  const PROMPT_COUNT = 15;
   let createdCount = 0;
+  const categories = ["개발", "비즈니스", "디자인", "금융", "기타"];
 
-  for (let i = 0; i < POST_COUNT; i++) {
+  for (let i = 0; i < PROMPT_COUNT; i++) {
     const randomUser = users[randomInt(0, users.length - 1)];
     const randomModelA = modelList[randomInt(0, modelList.length - 1)];
     const randomModelB = modelList[randomInt(0, modelList.length - 1)];
 
-    // Prompt
+    // Prompt 생성 (공유된 상태로)
     const prompt = await prisma.prompt.create({
-      data: { text: randomPrompt() },
+      data: { 
+        text: randomPrompt(),
+        userId: randomUser.id,
+        // Shared fields
+        isShared: true,
+        title: randomTitle(),
+        category: categories[randomInt(0, categories.length - 1)],
+        likes: 0,
+        createdAt: randomDate(),
+      },
     });
 
     // Match
@@ -193,26 +179,6 @@ async function main() {
       },
     });
 
-    // Post
-    const post = await prisma.post.create({
-      data: {
-        matchId: match.id,
-        userId: randomUser.id,
-        title: randomTitle(),
-        likes: 0,
-        createdAt: randomDate(),
-      },
-    });
-
-    // 랜덤 태그 1~3개 선택
-    const tagCount = randomInt(1, 3);
-    const shuffled = [...tags].sort(() => Math.random() - 0.5);
-    for (let t = 0; t < tagCount; t++) {
-      await prisma.postTag.create({
-        data: { postId: post.id, tagId: shuffled[t].id },
-      });
-    }
-
     // 좋아요 추가 (랜덤하게 여러 유저가 좋아요)
     const likeCount = randomInt(10, 200); // ✅ 10~200 사이 랜덤
     const likers = new Set<number>();
@@ -226,25 +192,98 @@ async function main() {
     }
 
     for (const userIdx of likers) {
-      await prisma.postLike.create({
+      await prisma.promptLike.create({
         data: {
-          postId: post.id,
+          promptId: prompt.id,
           userId: users[userIdx].id,
         },
       });
     }
 
-    // Post의 likes 필드 업데이트
-    await prisma.post.update({
-      where: { id: post.id },
+    // Prompt의 likes 필드 업데이트
+    await prisma.prompt.update({
+      where: { id: prompt.id },
       data: { likes: likers.size }, // 실제로 생성된 좋아요 수 반영
     });
 
     createdCount++;
-    console.log(`📝 Post ${createdCount}/${POST_COUNT} created`);
+    console.log(`📝 Prompt ${createdCount}/${PROMPT_COUNT} shared`);
   }
 
-  console.log(`🎉 ${createdCount} random posts created!`);
+  console.log(`🎉 ${createdCount} random prompts shared!`);
+
+  // 4. Achievements 시드 데이터
+  await prisma.achievement.createMany({
+    data: [
+      // Creation / Volume
+      {
+        name: 'First Prompt',
+        description: '첫 번째 프롬프트를 공유했다.',
+        condition: '{"type":"shared_prompts_count","count":1,"rarity":"Common","exp":10}',
+        reward: 10
+      },
+      {
+        name: 'Getting Started',
+        description: '프롬프트 10개를 공유했다.',
+        condition: '{"type":"shared_prompts_count","count":10,"rarity":"Common","exp":10}',
+        reward: 10
+      },
+      {
+        name: 'Prompt Enthusiast',
+        description: '프롬프트 50개를 공유했다.',
+        condition: '{"type":"shared_prompts_count","count":50,"rarity":"Rare","exp":25}',
+        reward: 25
+      },
+
+      // Quality / Popularity
+      {
+        name: 'First Like',
+        description: '공유한 프롬프트가 첫 좋아요를 받았다.',
+        condition: '{"type":"total_likes","count":1,"rarity":"Common","exp":10}',
+        reward: 10
+      },
+      {
+        name: 'Liked Creator',
+        description: '내 프롬프트들이 총 20개의 좋아요를 받았다.',
+        condition: '{"type":"total_likes","count":20,"rarity":"Rare","exp":25}',
+        reward: 25
+      },
+      {
+        name: 'Rising Star',
+        description: '단일 프롬프트가 좋아요 20개 이상을 받았다.',
+        condition: '{"type":"top_prompt_likes","count":20,"rarity":"Rare","exp":25}',
+        reward: 25
+      },
+      {
+        name: 'Dashboard Hero',
+        description: '단일 프롬프트가 좋아요 50개 이상을 받았다.',
+        condition: '{"type":"top_prompt_likes","count":50,"rarity":"Epic","exp":60}',
+        reward: 60
+      },
+      {
+        name: 'Community Favorite',
+        description: '내 프롬프트들이 총 200개의 좋아요를 받았다.',
+        condition: '{"type":"total_likes","count":200,"rarity":"Epic","exp":60}',
+        reward: 60
+      },
+
+      // Content & Diversity
+      {
+        name: 'Category Explorer',
+        description: '3개 이상의 카테고리에서 프롬프트를 공유했다.',
+        condition: '{"type":"distinct_categories","count":3,"rarity":"Rare","exp":25}',
+        reward: 25
+      },
+      {
+        name: 'Category Master',
+        description: '5개 모든 카테고리에서 최소 1개 이상 프롬프트를 공유했다.',
+        condition: '{"type":"distinct_categories","count":5,"rarity":"Epic","exp":60}',
+        reward: 60
+      }
+    ],
+    skipDuplicates: true
+  });
+  console.log("✅ Achievements seeded");
 }
 
 main()

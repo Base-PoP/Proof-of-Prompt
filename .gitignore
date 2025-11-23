@@ -3,15 +3,13 @@
 # Dependencies
 node_modules/
 
-# Package manager lock files (pnpm-only project)
-package-lock.json
+# Package manager lock files
 yarn.lock
-
+# root package-lock is not used; keep frontend/backend locks tracked
 # Environment variables
 .env
 .env*.local
 !.env.example
-!env.template
 
 # IDE
 .vscode/
@@ -52,5 +50,3 @@ coverage/
 # Misc
 *.pem
 *.key
-
-.playwright-mcp/

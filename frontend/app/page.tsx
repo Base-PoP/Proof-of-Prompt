@@ -162,8 +162,8 @@ export default function Home() {
     setCurrentPage('conversation');
   };
 
-  const handleShareToDashboard = (matchId: string, prompt: string, response: string) => {
-    setDraftPost({ matchId, prompt, response });
+  const handleShareToDashboard = (sharedPromptId: string) => {
+    setSelectedPostId(sharedPromptId);
     setCurrentPage('dashboard');
   };
 
@@ -206,7 +206,7 @@ export default function Home() {
           <DashboardPage onNewChat={handleNewChat} onSelectPost={handleSelectPost} />
         );
       case 'leaderboard':
-        return <LeaderboardPage />;
+        return <LeaderboardPage onSelectPost={handleSelectPost} />;
       case 'profile':
         return <ProfilePage />;
       default:

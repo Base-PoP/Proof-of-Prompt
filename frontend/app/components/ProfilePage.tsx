@@ -22,7 +22,7 @@ import { formatUnits } from "viem";
 import { USDC_ADDRESS, USDC_ABI } from "@/lib/contracts/usdc-config";
 
 interface UserStats {
-  totalPosts: number;
+  totalPrompts: number;
   totalLikes: number;
   score: number;
   level: number;
@@ -39,13 +39,19 @@ interface SharedPost {
   tags: string[];
 }
 
+import { Progress } from "@/app/components/ui/progress";
+import { AchievementItem } from "@/lib/types";
+
 export function ProfilePage() {
   const [isMounted, setIsMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "achievements">("overview");
   const [userStats, setUserStats] = useState<UserStats | null>(null);
-  const [popularPosts, setPopularPosts] = useState<SharedPost[]>([]);
+  const [popularPrompts, setPopularPrompts] = useState<SharedPost[]>([]);
+  const [achievements, setAchievements] = useState<AchievementItem[]>([]);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [joinDate, setJoinDate] = useState<string>("");
+  const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [isLoadingAchievements, setIsLoadingAchievements] = useState(false);
 
   const {
     login,
@@ -67,13 +73,19 @@ export function ProfilePage() {
         setIsLoadingProfile(true);
         const profile = await usersApi.getUserProfile(address);
         setUserStats(profile.stats);
-        setPopularPosts(profile.popularPosts);
+        setPopularPrompts(profile.popularPrompts);
         setJoinDate(new Date(profile.user.createdAt).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short' }));
+        
+        // Fetch achievements
+        setIsLoadingAchievements(true);
+        const fetchedAchievements = await usersApi.getAchievements(address);
+        setAchievements(fetchedAchievements);
       } catch (err) {
         console.error('Failed to fetch profile:', err);
         toast.error('프로필을 불러오지 못했습니다');
       } finally {
         setIsLoadingProfile(false);
+        setIsLoadingAchievements(false);
       }
     };
 
@@ -117,6 +129,27 @@ export function ProfilePage() {
 
   const getChainName = () => {
     return "Base";
+  };
+
+  const handleClaim = async (achievementId: string) => {
+    if (!address) return;
+    setClaimingId(achievementId);
+    try {
+      const result = await usersApi.claimAchievement(address, achievementId);
+      if (result.ok) {
+        setAchievements((prev) =>
+          prev.map((a) =>
+            a.id === achievementId ? { ...a, claimed: true } : a
+          )
+        );
+        toast.success('업적을 클레임했습니다.');
+      }
+    } catch (err) {
+      console.error('Failed to claim achievement:', err);
+      toast.error('클레임에 실패했습니다.');
+    } finally {
+      setClaimingId(null);
+    }
   };
 
   if (!isMounted) {
@@ -182,6 +215,26 @@ export function ProfilePage() {
                 >
                   Edit Profile
                 </Button>
+                
+                {/* Experience Bar */}
+                <div className="mt-4 w-full max-w-[240px]">
+                  <div className="flex justify-between text-xs mb-1.5 font-medium text-gray-600">
+                    <span className="flex items-center gap-1">
+                      <Award className="w-3 h-3 text-blue-600" /> XP
+                    </span>
+                    <span className="text-blue-600">
+                      {userStats?.score || 0} <span className="text-gray-400">/ 100</span>
+                    </span>
+                  </div>
+                  <Progress 
+                    value={userStats?.score ? userStats.score % 100 : 0} 
+                    className="h-2.5 bg-blue-50" 
+                    indicatorColor="#0052FF"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1 text-right">
+                    Next Level: {100 - ((userStats?.score || 0) % 100)} XP needed
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -320,7 +373,102 @@ export function ProfilePage() {
           >
             Overview
           </button>
+          <button
+            onClick={() => setActiveTab("achievements")}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+              activeTab === "achievements"
+                ? "border-blue-500 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+            style={
+              activeTab === "achievements"
+                ? { borderColor: "#0052FF", color: "#0052FF" }
+                : {}
+            }
+          >
+            Achievements
+          </button>
         </div>
+
+        {activeTab === "achievements" && (
+          <div className="grid gap-4">
+            {isLoadingAchievements ? (
+              <div className="flex items-center justify-center py-12 text-gray-500">
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                업적을 불러오는 중...
+              </div>
+            ) : achievements.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                아직 달성한 업적이 없습니다.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {achievements.map((achievement) => (
+                  <div
+                    key={achievement.id}
+                    className={`p-4 border rounded-xl h-full flex flex-col gap-3 shadow-sm ${
+                      achievement.achievedAt ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                        achievement.achievedAt ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-400'
+                      }`}>
+                        <Award className="w-6 h-6" />
+                      </div>
+                      <div className="flex items-center gap-2 text-xs">
+                        {achievement.rarity && (
+                          <span className="px-2 py-1 rounded-full bg-white/60 text-gray-700 border border-gray-200">
+                            {achievement.rarity}
+                          </span>
+                        )}
+                        {achievement.exp !== undefined && (
+                          <span className="px-2 py-1 rounded-full bg-blue-100 text-blue-700 border border-blue-200">
+                            +{achievement.exp} XP
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className={`font-semibold mb-1 ${achievement.achievedAt ? 'text-gray-900' : 'text-gray-500'}`}>
+                        {achievement.title}
+                      </h3>
+                      <p className="text-sm text-gray-600 leading-relaxed line-clamp-3">{achievement.description}</p>
+                      {achievement.progress && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {achievement.progress.current} / {achievement.progress.target}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <span>
+                        {achievement.achievedAt
+                          ? new Date(achievement.achievedAt).toLocaleDateString('ko-KR')
+                          : '미달성'}
+                      </span>
+                      {achievement.achievedAt && (
+                        achievement.claimed ? (
+                          <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">
+                            Claimed
+                          </span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                            disabled={claimingId === achievement.id}
+                            onClick={() => handleClaim(achievement.id)}
+                          >
+                            {claimingId === achievement.id ? 'Claiming...' : 'Claim'}
+                          </Button>
+                        )
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {activeTab === "overview" && (
           <>
@@ -344,7 +492,7 @@ export function ProfilePage() {
                   className="text-3xl mb-2 font-bold"
                   style={{ color: "#0052FF" }}
                 >
-                  {userStats.totalPosts}
+                  {userStats.totalPrompts}
                 </div>
                 <div className="text-sm text-gray-600 font-medium">
                   작성한 프롬프트
@@ -359,7 +507,7 @@ export function ProfilePage() {
                   className="text-3xl mb-2 font-bold"
                   style={{ color: "#0052FF" }}
                 >
-                  {userStats.totalPosts}
+                  {userStats.totalPrompts}
                 </div>
                 <div className="text-sm text-gray-600 font-medium">
                   공유한 프롬프트
@@ -409,8 +557,8 @@ export function ProfilePage() {
               </div>
 
               <div className="space-y-3">
-                {popularPosts && popularPosts.length > 0 ? (
-                  popularPosts.slice(0, 5).map((post, index) => (
+                {popularPrompts && popularPrompts.length > 0 ? (
+                  popularPrompts.slice(0, 5).map((post, index) => (
                   <div
                     key={post.id}
                     className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg hover:bg-blue-50/30 transition-all duration-150 hover:shadow-sm"

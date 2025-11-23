@@ -6,8 +6,10 @@ import { Wallet } from 'lucide-react';
 import { formatEther } from 'viem';
 import { useEffect, useState } from 'react';
 
+import { USDC_ADDRESS } from '@/lib/contracts/usdc-config';
+
 /**
- * 헤더에 표시되는 ETH 잔액 컴포넌트
+ * 헤더에 표시되는 USDC 잔액 컴포넌트
  */
 export function WalletBalance() {
   const { isAuthenticated, address, chainId } = useWallet();
@@ -18,10 +20,14 @@ export function WalletBalance() {
     setIsMounted(true);
   }, []);
 
-  // ETH 잔액 조회
+  // USDC 잔액 조회
   const { data: balanceData, isLoading } = useBalance({
     address: address as `0x${string}` | undefined,
     chainId: chainId,
+    token: USDC_ADDRESS,
+    query: {
+      enabled: isMounted && isAuthenticated && !!address,
+    },
   });
 
   // 클라이언트 마운트 전이거나 지갑이 연결되지 않았으면 표시 안 함
@@ -29,7 +35,8 @@ export function WalletBalance() {
     return null;
   }
 
-  const balance = balanceData ? parseFloat(formatEther(balanceData.value)).toFixed(4) : '0.0000';
+  // wagmi의 useBalance는 token decimals를 자동으로 처리하여 formatted를 제공함
+  const balance = balanceData ? parseFloat(balanceData.formatted).toFixed(2) : '0.00';
 
   return (
     <div 
@@ -38,7 +45,7 @@ export function WalletBalance() {
     >
       <Wallet className="w-4 h-4" style={{ color: '#0052FF' }} />
       <span className="text-sm font-medium" style={{ color: '#0052FF' }}>
-        {isLoading ? 'Loading...' : `${balance} ETH`}
+        {isLoading ? 'Loading...' : `${balance} USDC`}
       </span>
     </div>
   );

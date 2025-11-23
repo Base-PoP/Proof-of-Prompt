@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { Card } from './ui/card';
-import { Trophy, TrendingUp, TrendingDown, Users, Loader2, X, Gift, Heart } from 'lucide-react';
+import { Trophy, Loader2, X, Heart, Users } from 'lucide-react';
 import { leaderboardApi, usersApi } from '../../lib/api';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { PromptItem } from '../../lib/types';
 
 interface ModelRanking {
   rank: number;
@@ -27,25 +26,19 @@ interface UserRanking {
   postsCount: number;
 }
 
-interface PopularPost {
-  id: number;
-  title: string;
-  prompt: string;
-  response: string;
-  modelName: string;
-  likes: number;
-  createdAt: string;
-  tags: string[];
+interface LeaderboardPageProps {
+  onSelectPost?: (postId: string) => void;
 }
 
-export function LeaderboardPage() {
+export function LeaderboardPage({ onSelectPost }: LeaderboardPageProps) {
   const [modelRankings, setModelRankings] = useState<ModelRanking[]>([]);
   const [userRankings, setUserRankings] = useState<UserRanking[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(true);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedUser, setSelectedUser] = useState<{ nickname: string; posts: PopularPost[] } | null>(null);
+  const [selectedUser, setSelectedUser] = useState<{ nickname: string; posts: PromptItem[] } | null>(null);
   const [isLoadingUserPosts, setIsLoadingUserPosts] = useState(false);
+  const [userPostsError, setUserPostsError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchLeaderboards = async () => {
@@ -87,15 +80,14 @@ export function LeaderboardPage() {
   const handleUserClick = async (walletAddress: string) => {
     setIsLoadingUserPosts(true);
     setSelectedUser(null);
+    setUserPostsError(null);
     
     try {
-      const profileData = await usersApi.getUserProfile(walletAddress);
-      setSelectedUser({
-        nickname: walletAddress,
-        posts: profileData.popularPosts
-      });
+      const sharedPrompts = await usersApi.getUserSharedPrompts(walletAddress, 'likes');
+      setSelectedUser({ nickname: walletAddress, posts: sharedPrompts });
     } catch (err) {
       console.error('Failed to fetch user posts:', err);
+      setUserPostsError('공유된 프롬프트를 불러오지 못했습니다.');
     } finally {
       setIsLoadingUserPosts(false);
     }
@@ -287,7 +279,7 @@ export function LeaderboardPage() {
           </div>
           
           <div className="mt-3 text-center text-xs text-gray-500">
-            <p>Based on total likes × 10</p>
+            <p>Score = (likes × 10) + shared prompts count</p>
           </div>
         </div>
       </div>
@@ -296,28 +288,28 @@ export function LeaderboardPage() {
       <div className="grid md:grid-cols-3 gap-4 mt-8">
         <Card className="p-4 border shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-1" style={{ borderColor: '#0052FF20', background: 'linear-gradient(135deg, #EEF5FF 0%, #FFFFFF 100%)' }}>
           <h3 className="text-sm mb-2 font-semibold" style={{ color: '#0052FF' }}>
-            💡 모델 순위 집계 방식
+            💡 모델 랭킹 산정
           </h3>
           <p className="text-xs text-gray-600 leading-relaxed">
-            각 모델은 사용자들이 공유한 게시글의 좋아요 수를 기반으로 순위가 매겨집니다. 총 좋아요 수 × 10점으로 계산됩니다.
+            Adoption Rate = 공유된 횟수 / 전체 응답 수 × 100, 동률일 때는 Posted(공유된 카드 수) 많은 순으로 정렬합니다.
           </p>
         </Card>
         
         <Card className="p-4 border shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-1" style={{ borderColor: '#0052FF20', background: 'linear-gradient(135deg, #EEF5FF 0%, #FFFFFF 100%)' }}>
           <h3 className="text-sm mb-2 font-semibold" style={{ color: '#0052FF' }}>
-            ⭐ 포인트 획득 방법
+            ⭐ 유저 점수
           </h3>
           <p className="text-xs text-gray-600 leading-relaxed">
-            흥미로운 프롬프트와 답변을 공유하고, 다른 사용자들의 좋아요를 받으면 포인트를 획득할 수 있습니다.
+            총 점수 = 좋아요 수 × 10 + 공유된 프롬프트 개수. 좋아요를 많이 받을수록 점수가 빠르게 올라갑니다.
           </p>
         </Card>
         
         <Card className="p-4 border shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-1" style={{ borderColor: '#0052FF20', background: 'linear-gradient(135deg, #EEF5FF 0%, #FFFFFF 100%)' }}>
           <h3 className="text-sm mb-2 font-semibold" style={{ color: '#0052FF' }}>
-            🏆 순위 상승 팁
+            🏆 공유 프롬프트 보기
           </h3>
           <p className="text-xs text-gray-600 leading-relaxed">
-            꾸준한 참여와 양질의 콘텐츠 공유를 통해 리더보드 순위를 올릴 수 있습니다. 상위권 유저는 특별 뱃지를 획득합니다!
+            유저 지갑을 클릭하면 좋아요 많은 순으로 공유 기록을 볼 수 있고, 항목을 클릭하면 상세 대화 페이지로 이동합니다.
           </p>
         </Card>
       </div>
@@ -362,12 +354,22 @@ export function LeaderboardPage() {
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#0052FF' }} />
                 </div>
+              ) : userPostsError ? (
+                <div className="text-center py-12 text-red-600 text-sm">
+                  {userPostsError}
+                </div>
               ) : selectedUser && selectedUser.posts.length > 0 ? (
                 <div className="space-y-4">
                   {selectedUser.posts.map((post, index) => (
-                    <div
+                    <button
                       key={post.id}
-                      className="p-5 rounded-lg border-2 hover:shadow-md transition-all duration-150"
+                      onClick={() => {
+                        if (onSelectPost) {
+                          onSelectPost(post.id.toString());
+                        }
+                        setSelectedUser(null);
+                      }}
+                      className="w-full text-left p-5 rounded-lg border-2 hover:shadow-md transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       style={{ borderColor: '#0052FF20' }}
                     >
                       {/* Rank Badge */}
@@ -390,37 +392,23 @@ export function LeaderboardPage() {
                         <div className="flex-1 min-w-0">
                           <h3 className="text-base font-semibold mb-2">{post.title}</h3>
                           <p className="text-sm text-gray-700 mb-3 line-clamp-2">{post.prompt}</p>
-                          
-                          {/* Tags */}
-                          {post.tags && post.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mb-3">
-                              {post.tags.map((tag, idx) => (
-                                <span
-                                  key={idx}
-                                  className="px-2 py-1 text-xs rounded-full"
-                                  style={{
-                                    backgroundColor: '#EEF5FF',
-                                    color: '#0052FF',
-                                  }}
-                                >
-                                  #{tag}
-                                </span>
-                              ))}
-                            </div>
-                          )}
 
                           {/* Meta Info */}
                           <div className="flex items-center gap-4 text-xs text-gray-500">
+                            <span className="px-2 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+                              {post.category}
+                            </span>
                             <span className="flex items-center gap-1">
                               <Heart className="w-3 h-3" style={{ color: '#FF6B6B' }} />
                               {post.likes} 좋아요
                             </span>
                             <span className="text-blue-600">{post.modelName}</span>
+                            <span className="text-gray-400">{post.modelProvider}</span>
                             <span>{new Date(post.createdAt).toLocaleDateString('ko-KR')}</span>
                           </div>
                         </div>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               ) : (

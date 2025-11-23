@@ -46,21 +46,23 @@ export function Providers({ children }: { children: React.ReactNode }) {
         requireUserPasswordOnCreate: false,
         noPromptOnSignature: false,
       },
-      loginMethods: ['wallet', 'farcaster', 'email', 'google', 'twitter'] as const,
+      loginMethods: ['wallet', 'farcaster', 'email', 'google', 'twitter'] as any,
       appearance: {
         theme: 'light' as const,
-        accentColor: '#0052FF',
+        accentColor: '#0052FF' as `#${string}`,
         logo: 'https://www.base.org/favicon.png',
         showWalletLoginFirst: true,
-        walletList: ['metamask', 'coinbase_wallet'],
+        walletList: ['metamask', 'coinbase_wallet'] as any,
         showWalletList: true,
       },
       supportedChains: [base, baseSepolia],
-      defaultChain: base,
+      defaultChain: baseSepolia, // Base Sepolia Testnet 사용
       legal: {
         termsAndConditionsUrl: 'https://your-domain.com/terms',
         privacyPolicyUrl: 'https://your-domain.com/privacy',
       },
+      // Privy는 기본적으로 localStorage를 사용하여 세션을 유지합니다
+      // 추가 설정 없이도 자동으로 세션이 복원됩니다
     }),
     []
   );
@@ -68,7 +70,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <PrivyProvider
       appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID || ''}
-      config={privyConfig}
+      config={privyConfig as any}
     >
       <QueryClientProvider client={queryClient}>
         <WagmiProvider config={wagmiConfig}>

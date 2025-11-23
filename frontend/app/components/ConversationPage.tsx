@@ -1,15 +1,28 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { Button } from './ui/button';
-import { Card } from './ui/card';
-import { Copy, Heart, Loader2, ArrowLeft, MessageSquare, Clock, Trash2 } from 'lucide-react';
-import { postsApi } from '../../lib/api';
-import { useAuth } from '../hooks/useAuth';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { toast } from 'sonner';
-import { CodeBlock } from './CodeBlock';
+import { useState, useEffect } from "react";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
+import { Input } from "./ui/input";
+import {
+  Copy,
+  Heart,
+  Loader2,
+  ArrowLeft,
+  MessageSquare,
+  Clock,
+  Trash2,
+  Edit,
+  Check,
+  X,
+} from "lucide-react";
+import { promptsApi } from "../../lib/api";
+import { useAuth } from "../hooks/useAuth";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { toast } from "sonner";
+import { CodeBlock } from "./CodeBlock";
+import { Category, CATEGORIES } from "../../lib/constants";
 
 interface Post {
   id: string;
@@ -24,6 +37,7 @@ interface Post {
   likes: number;
   isLiked?: boolean;
   tags?: string[];
+  category?: Category;
 }
 
 interface ConversationPageProps {
@@ -36,24 +50,66 @@ export function ConversationPage({ postId, onBack }: ConversationPageProps) {
   const [post, setPost] = useState<Post | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editCategory, setEditCategory] = useState<Category>("기타");
 
   useEffect(() => {
     loadPost();
   }, [postId]);
 
+  useEffect(() => {
+    if (post) {
+      setEditTitle(post.title || "");
+      setEditCategory(post.category || "기타");
+    }
+  }, [post]);
   const loadPost = async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const fetchedPost = await postsApi.getPost(postId, userAddress || undefined);
-      setPost(fetchedPost);
+      const fetchedPrompt = await promptsApi.getPrompt(
+        postId,
+        userAddress || undefined
+      );
+      setPost(fetchedPrompt);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '포스트를 불러올 수 없습니다');
-      console.error('Failed to load post:', err);
+      setError(
+        err instanceof Error ? err.message : "포스트를 불러올 수 없습니다"
+      );
+      console.error("Failed to load post:", err);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!post) return;
+
+    requireAuth(async () => {
+      try {
+        await promptsApi.updatePrompt(
+          post.id,
+          editTitle,
+          editCategory,
+          userAddress || undefined
+        );
+        
+        setPost({
+          ...post,
+          title: editTitle,
+          category: editCategory,
+        });
+        setIsEditing(false);
+        toast.success("게시글이 수정되었습니다");
+      } catch (err) {
+        toast.error("게시글 수정 실패", {
+          description: "다시 시도해주세요",
+        });
+        console.error("Failed to update post:", err);
+      }
+    }, "게시글을 수정하려면 지갑을 연결해주세요");
   };
 
   const handleLike = async () => {
@@ -62,50 +118,50 @@ export function ConversationPage({ postId, onBack }: ConversationPageProps) {
     // 권한 체크
     requireAuth(async () => {
       try {
-        const result = await postsApi.likePost(post.id, undefined);
-        
+        const result = await promptsApi.likePrompt(post.id, userAddress || undefined);
+
         if (result.ok) {
           setPost({
             ...post,
             likes: result.likes,
-            isLiked: !post.isLiked,
+            isLiked: "liked" in result ? result.liked : !post.isLiked,
           });
         }
       } catch (err) {
-        toast.error('좋아요 실패', {
-          description: err instanceof Error ? err.message : '다시 시도해주세요',
+        toast.error("좋아요 실패", {
+          description: err instanceof Error ? err.message : "다시 시도해주세요",
         });
-        console.error('Failed to like post:', err);
+        console.error("Failed to like post:", err);
       }
-    }, '좋아요를 누르려면 지갑을 연결해주세요');
+    }, "좋아요를 누르려면 지갑을 연결해주세요");
   };
 
   const handleDelete = async () => {
     if (!post) return;
 
-    if (!confirm('정말 이 게시글을 삭제하시겠습니까?')) {
+    if (!confirm("정말 이 게시글을 삭제하시겠습니까?")) {
       return;
     }
 
     requireAuth(async () => {
       try {
-        await postsApi.deletePost(post.id, userAddress || undefined);
-        toast.success('게시글이 삭제되었습니다');
+        await promptsApi.deletePrompt(post.id, userAddress || undefined);
+        toast.success("게시글이 삭제되었습니다");
         if (onBack) {
           onBack();
         }
       } catch (err) {
-        toast.error('게시글 삭제 실패', {
-          description: '자신의 게시글만 삭제할 수 있습니다',
+        toast.error("게시글 삭제 실패", {
+          description: "자신의 게시글만 삭제할 수 있습니다",
         });
-        console.error('Failed to delete post:', err);
+        console.error("Failed to delete post:", err);
       }
-    }, '게시글을 삭제하려면 지갑을 연결해주세요');
+    }, "게시글을 삭제하려면 지갑을 연결해주세요");
   };
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast.success('복사되었습니다!');
+    toast.success("복사되었습니다!");
   };
 
   const formatTimeAgo = (dateString: string) => {
@@ -113,17 +169,22 @@ export function ConversationPage({ postId, onBack }: ConversationPageProps) {
     const now = new Date();
     const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-    if (diffInSeconds < 60) return '방금 전';
+    if (diffInSeconds < 60) return "방금 전";
     if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}분 전`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}시간 전`;
-    if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}일 전`;
-    return date.toLocaleDateString('ko-KR');
+    if (diffInSeconds < 86400)
+      return `${Math.floor(diffInSeconds / 3600)}시간 전`;
+    if (diffInSeconds < 2592000)
+      return `${Math.floor(diffInSeconds / 86400)}일 전`;
+    return date.toLocaleDateString("ko-KR");
   };
 
   if (isLoading) {
     return (
       <div className="min-h-[80vh] flex justify-center items-center">
-        <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#0052FF' }} />
+        <Loader2
+          className="w-8 h-8 animate-spin"
+          style={{ color: "#0052FF" }}
+        />
       </div>
     );
   }
@@ -132,11 +193,10 @@ export function ConversationPage({ postId, onBack }: ConversationPageProps) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-12">
         <div className="text-center">
-          <p className="text-red-600 text-lg mb-4">{error || '포스트를 찾을 수 없습니다'}</p>
-          <Button
-            onClick={onBack}
-            variant="outline"
-          >
+          <p className="text-red-600 text-lg mb-4">
+            {error || "포스트를 찾을 수 없습니다"}
+          </p>
+          <Button onClick={onBack} variant="outline">
             <ArrowLeft className="w-4 h-4 mr-2" />
             돌아가기
           </Button>
@@ -149,71 +209,146 @@ export function ConversationPage({ postId, onBack }: ConversationPageProps) {
     <div className="max-w-5xl mx-auto px-4 py-6">
       {/* Header with Back Button */}
       <div className="mb-6">
-        <Button
-          onClick={onBack}
-          variant="ghost"
-          className="mb-4"
-        >
+        <Button onClick={onBack} variant="ghost" className="mb-4">
           <ArrowLeft className="w-4 h-4 mr-2" />
           돌아가기
         </Button>
       </div>
 
       {/* Post Header Info */}
-      <Card className="p-6 mb-6 border-2" style={{ borderColor: '#0052FF20' }}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold" style={{ backgroundColor: '#0052FF' }}>
-              {post.userName ? post.userName[0].toUpperCase() : 'A'}
-            </div>
-            <div>
-              <p className="text-base font-semibold text-gray-700">
-                {post.userName || 'Anonymous'}
-              </p>
-              <div className="flex items-center gap-1 text-sm text-gray-500">
-                <Clock className="w-3 h-3" />
-                {formatTimeAgo(post.createdAt)}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Model Info */}
-            {post.modelName && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg">
-                <MessageSquare className="w-4 h-4" style={{ color: '#0052FF' }} />
-                <span className="text-sm font-semibold" style={{ color: '#0052FF' }}>
-                  {post.modelName}
-                </span>
-              </div>
-            )}
-
-            {/* Delete Button - 본인 게시글인 경우만 표시 */}
-            {post.userName === userAddress && (
-              <button
-                onClick={handleDelete}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all bg-red-50 text-red-600 hover:bg-red-100"
-                title="게시글 삭제"
-              >
-                <Trash2 className="w-5 h-5" />
-                <span className="text-sm font-medium">삭제</span>
-              </button>
-            )}
-
-            {/* Like Button */}
-            <button
-              onClick={handleLike}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                post.isLiked
-                  ? 'bg-red-50 text-red-600'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              <Heart
-                className={`w-5 h-5 ${post.isLiked ? 'fill-current' : ''}`}
+      <Card className="p-6 mb-6 border-2" style={{ borderColor: "#0052FF20" }}>
+        <div className="flex flex-col gap-4">
+          {/* Title and Edit Mode */}
+          {isEditing ? (
+            <div className="flex flex-col gap-3 pb-4 border-b border-gray-100">
+              <Input
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                placeholder="제목을 입력하세요"
+                className="text-lg font-bold"
               />
-              <span className="text-sm font-medium">{post.likes}</span>
-            </button>
+              <div className="flex gap-2">
+                {CATEGORIES.map((category) => (
+                  <button
+                    key={category}
+                    onClick={() => setEditCategory(category)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                      editCategory === category
+                        ? "bg-blue-100 text-blue-800 ring-2 ring-blue-500"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    }`}
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2 justify-end mt-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setIsEditing(false)}
+                >
+                  <X className="w-4 h-4 mr-1" /> 취소
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSaveEdit}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <Check className="w-4 h-4 mr-1" /> 저장
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start justify-between pb-4 border-b border-gray-100">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 mb-2">
+                  {post.title || "Untitled"}
+                </h1>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                    {post.category || "기타"}
+                  </span>
+                </div>
+              </div>
+
+              {post.userName === userAddress && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsEditing(true)}
+                  className="text-gray-500 hover:text-blue-600"
+                >
+                  <Edit className="w-4 h-4 mr-1" />
+                  수정
+                </Button>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold"
+                style={{ backgroundColor: "#0052FF" }}
+              >
+                {post.userName ? post.userName[0].toUpperCase() : "A"}
+              </div>
+              <div>
+                <p className="text-base font-semibold text-gray-700">
+                  {post.userName || "Anonymous"}
+                </p>
+                <div className="flex items-center gap-1 text-sm text-gray-500">
+                  <Clock className="w-3 h-3" />
+                  {formatTimeAgo(post.createdAt)}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {/* Model Info */}
+              {post.modelName && (
+                <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg">
+                  <MessageSquare
+                    className="w-4 h-4"
+                    style={{ color: "#0052FF" }}
+                  />
+                  <span
+                    className="text-sm font-semibold"
+                    style={{ color: "#0052FF" }}
+                  >
+                    {post.modelName}
+                  </span>
+                </div>
+              )}
+
+              {/* Delete Button - 본인 게시글인 경우만 표시 */}
+              {post.userName === userAddress && (
+                <button
+                  onClick={handleDelete}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all bg-red-50 text-red-600 hover:bg-red-100"
+                  title="게시글 삭제"
+                >
+                  <Trash2 className="w-5 h-5" />
+                  <span className="text-sm font-medium">삭제</span>
+                </button>
+              )}
+
+              {/* Like Button */}
+              <button
+                onClick={handleLike}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                  post.isLiked
+                    ? "bg-red-50 text-red-600"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                <Heart
+                  className={`w-5 h-5 ${post.isLiked ? "fill-current" : ""}`}
+                />
+                <span className="text-sm font-medium">{post.likes}</span>
+              </button>
+            </div>
           </div>
         </div>
       </Card>
@@ -231,14 +366,14 @@ export function ConversationPage({ postId, onBack }: ConversationPageProps) {
 
       {/* AI Response */}
       <div className="mb-6">
-        <Card className="p-6 border-2" style={{ borderColor: '#0052FF20' }}>
+        <Card className="p-6 border-2" style={{ borderColor: "#0052FF20" }}>
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-gray-700">
-                {post.modelName || 'AI'} 답변
+                {post.modelName || "AI"} 답변
               </h3>
             </div>
-            <button 
+            <button
               onClick={() => handleCopy(post.response)}
               className="p-2 hover:bg-gray-100 rounded transition-colors"
               title="답변 복사"
@@ -246,7 +381,8 @@ export function ConversationPage({ postId, onBack }: ConversationPageProps) {
               <Copy className="w-4 h-4 text-gray-500" />
             </button>
           </div>
-          <div className="prose prose-sm max-w-none
+          <div
+            className="prose prose-sm max-w-none
             prose-headings:font-bold prose-headings:text-gray-900
             prose-h1:text-2xl prose-h1:mb-4 prose-h1:mt-6
             prose-h2:text-xl prose-h2:mb-3 prose-h2:mt-5
@@ -266,28 +402,29 @@ export function ConversationPage({ postId, onBack }: ConversationPageProps) {
             prose-th:border prose-th:border-gray-300 prose-th:px-4 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:text-gray-900
             prose-td:border prose-td:border-gray-300 prose-td:px-4 prose-td:py-2 prose-td:text-gray-700
             prose-tr:border-b prose-tr:border-gray-200
-          ">
-            <ReactMarkdown 
+          "
+          >
+            <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
                 code({ node, inline, className, children, ...props }: any) {
-                  const match = /language-(\w+)/.exec(className || '');
-                  const language = match ? match[1] : '';
-                  
+                  const match = /language-(\w+)/.exec(className || "");
+                  const language = match ? match[1] : "";
+
                   if (!inline && language) {
                     return (
                       <CodeBlock language={language}>
-                        {String(children).replace(/\n$/, '')}
+                        {String(children).replace(/\n$/, "")}
                       </CodeBlock>
                     );
                   }
-                  
+
                   return (
                     <code className={className} {...props}>
                       {children}
                     </code>
                   );
-                }
+                },
               }}
             >
               {post.response}
@@ -299,10 +436,10 @@ export function ConversationPage({ postId, onBack }: ConversationPageProps) {
       {/* Footer */}
       <div className="text-center text-sm text-gray-500 mt-8">
         <p>
-          Powered by <span style={{ color: '#0052FF' }}>Base</span> blockchain 🎯
+          Powered by <span style={{ color: "#0052FF" }}>Base</span> blockchain
+          🎯
         </p>
       </div>
     </div>
   );
 }
-

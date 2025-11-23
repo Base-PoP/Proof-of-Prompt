@@ -6,7 +6,7 @@ import dotenv from "dotenv";
 import { arenaRouter } from "./modules/arena/arena.routes";
 import { leaderboardRouter } from "./modules/leaderboard/leaderboard.routes";
 import mockRouter from "./modules/mock/mock.routes";
-import postsRouter from "./modules/posts/posts.routes";
+import promptsRouter from "./modules/prompts/prompts.routes";
 import { usersRouter } from "./modules/users/users.routes";
 dotenv.config();
 
@@ -53,8 +53,8 @@ export const createApp = () => {
   // leaderboard 라우터
   app.use("/leaderboard", leaderboardRouter);
 
-  // posts 라우터
-  app.use("/posts", postsRouter);
+  // prompts 라우터
+  app.use("/prompts", promptsRouter);
 
   // users 라우터
   app.use("/users", usersRouter);

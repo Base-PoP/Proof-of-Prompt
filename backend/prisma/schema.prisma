@@ -45,6 +45,8 @@ model User {
   posts     Post[]
   postLikes PostLike[]
   campaignRewards CampaignReward[]
+  promptLikes PromptLike[]
+  userAchievements UserAchievement[]
 
   @@index([score, createdAt])
 }
@@ -123,8 +125,19 @@ model Prompt {
   userId    Int?
   user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
   createdAt DateTime  @default(now())
+  // Shared Prompt Fields
+  title     String?
+  category  String?
+  isShared  Boolean   @default(false)
+  likes     Int       @default(0)
 
   matches   Match[]
+  promptLikes PromptLike[]
+
+  @@index([isShared])
+  @@index([category])
+  @@index([likes])
+  @@index([createdAt])
 }
 
 // ---------------------------
@@ -149,6 +162,23 @@ model Match {
   post       Post?
   
   @@index([campaignId])
+}
+
+// ---------------------------
+// Model: PromptLike (프롬프트 좋아요)
+// ---------------------------
+model PromptLike {
+  id        Int      @id @default(autoincrement())
+  promptId  Int
+  userId    Int
+  createdAt DateTime @default(now())
+
+  prompt    Prompt   @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([promptId, userId])
+  @@index([promptId])
+  @@index([userId])
 }
 
 // ---------------------------
@@ -258,4 +288,50 @@ model PostLike {
   @@unique([postId, userId])
   @@index([postId])
   @@index([userId])
+}
+
+// ---------------------------
+// Model: Achievement (업적)
+// ---------------------------
+model Achievement {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String
+  condition   String
+  reward      Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  userAchievements UserAchievement[]
+}
+
+// ---------------------------
+// Model: UserAchievement (유저 업적 달성 기록)
+// ---------------------------
+model UserAchievement {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  achievementId Int
+  achievedAt    DateTime @default(now())
+  claimed       Boolean  @default(false)
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+  @@index([userId])
+}
+
+// ---------------------------
+// Model: PaymentAuthorization (x402 서명 nonce 기록)
+// ---------------------------
+model PaymentAuthorization {
+  id            Int      @id @default(autoincrement())
+  walletAddress String
+  nonce         String   @unique
+  validBefore   BigInt?
+  usedAt        DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  @@index([walletAddress])
+  @@index([createdAt])
 }
