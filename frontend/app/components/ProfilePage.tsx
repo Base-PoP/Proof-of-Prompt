@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "../hooks/useAuth";
+import { usersApi } from "@/lib/api";
 import { Card } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import {
@@ -21,38 +22,31 @@ import { formatUnits } from "viem";
 import { USDC_ADDRESS, USDC_ABI } from "@/lib/contracts/usdc-config";
 
 interface UserStats {
-  username: string;
-  level: number;
-  joinDate: string;
-  totalPrompts: number;
-  sharedPrompts: number;
+  totalPosts: number;
   totalLikes: number;
-}
-
-interface Achievement {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  unlocked: boolean;
-  unlockedAt?: string;
-  progress?: number;
-  maxProgress?: number;
+  score: number;
+  level: number;
 }
 
 interface SharedPost {
-  id: string;
+  id: number;
+  title: string;
   prompt: string;
+  response: string;
+  modelName: string;
   likes: number;
-  views: number;
   createdAt: string;
+  tags: string[];
 }
 
 export function ProfilePage() {
   const [isMounted, setIsMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "achievements">(
-    "overview"
-  );
+  const [activeTab, setActiveTab] = useState<"overview">("overview");
+  const [userStats, setUserStats] = useState<UserStats | null>(null);
+  const [popularPosts, setPopularPosts] = useState<SharedPost[]>([]);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [joinDate, setJoinDate] = useState<string>("");
+
   const {
     login,
     isAuthenticated,
@@ -60,6 +54,31 @@ export function ProfilePage() {
     userAddress: address,
     ready,
   } = useAuth();
+
+  // Fetch user profile from backend
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!address || !isAuthenticated) {
+        setIsLoadingProfile(false);
+        return;
+      }
+
+      try {
+        setIsLoadingProfile(true);
+        const profile = await usersApi.getUserProfile(address);
+        setUserStats(profile.stats);
+        setPopularPosts(profile.popularPosts);
+        setJoinDate(new Date(profile.user.createdAt).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short' }));
+      } catch (err) {
+        console.error('Failed to fetch profile:', err);
+        toast.error('프로필을 불러오지 못했습니다');
+      } finally {
+        setIsLoadingProfile(false);
+      }
+    };
+
+    fetchProfile();
+  }, [address, isAuthenticated]);
 
   // Read USDC balance from Base Sepolia
   const { data: usdcBalance, isLoading: isLoadingBalance } = useReadContract({
@@ -76,128 +95,6 @@ export function ProfilePage() {
   const formattedUsdcBalance = usdcBalance
     ? parseFloat(formatUnits(usdcBalance as bigint, 6)).toFixed(2)
     : "0.00";
-
-  const [userStats] = useState<UserStats>({
-    username: "AI Enthusiast",
-    level: 5,
-    joinDate: "Jan 2024",
-    totalPrompts: 127,
-    sharedPrompts: 3,
-    totalLikes: 105,
-  });
-
-  // Achievements data
-  const [achievements] = useState<Achievement[]>([
-    {
-      id: "first_vote",
-      name: "First Vote",
-      description: "첫 투표를 완료했습니다",
-      icon: "🎯",
-      unlocked: true,
-      unlockedAt: "2024.01.15",
-    },
-    {
-      id: "voter_10",
-      name: "Active Voter",
-      description: "10번의 투표를 완료했습니다",
-      icon: "🎖️",
-      unlocked: true,
-      unlockedAt: "2024.01.16",
-    },
-    {
-      id: "voter_100",
-      name: "Vote Master",
-      description: "100번의 투표를 완료했습니다",
-      icon: "🏆",
-      unlocked: true,
-      unlockedAt: "2024.01.20",
-    },
-    {
-      id: "streak_7",
-      name: "Consistent Warrior",
-      description: "7일 연속 출석했습니다",
-      icon: "🔥",
-      unlocked: true,
-      unlockedAt: "2024.01.18",
-    },
-    {
-      id: "first_share",
-      name: "Content Creator",
-      description: "첫 프롬프트를 공유했습니다",
-      icon: "📝",
-      unlocked: true,
-      unlockedAt: "2024.01.19",
-    },
-    {
-      id: "likes_10",
-      name: "Rising Star",
-      description: "공유한 프롬프트가 10개의 좋아요를 받았습니다",
-      icon: "⭐",
-      unlocked: false,
-      progress: 7,
-      maxProgress: 10,
-    },
-    {
-      id: "likes_50",
-      name: "Popular Creator",
-      description: "공유한 프롬프트가 50개의 좋아요를 받았습니다",
-      icon: "🌟",
-      unlocked: false,
-      progress: 7,
-      maxProgress: 50,
-    },
-    {
-      id: "share_10",
-      name: "Prolific Sharer",
-      description: "10개의 프롬프트를 공유했습니다",
-      icon: "📚",
-      unlocked: false,
-      progress: 3,
-      maxProgress: 10,
-    },
-  ]);
-
-  // Shared posts sorted by likes
-  const [sharedPosts] = useState<SharedPost[]>([
-    {
-      id: "1",
-      prompt: "안성맞춤의 반댓말은 무엇일까요? 언어학적 관점에서 분석해주세요.",
-      likes: 45,
-      views: 234,
-      createdAt: "2024.01.20",
-    },
-    {
-      id: "2",
-      prompt:
-        "양자 컴퓨팅의 기본 원리를 초등학생도 이해할 수 있게 설명해주세요.",
-      likes: 32,
-      views: 156,
-      createdAt: "2024.01.19",
-    },
-    {
-      id: "3",
-      prompt:
-        "AI에 관한 하이쿠를 작성해주세요. 한국어와 영어 버전 모두 부탁합니다.",
-      likes: 28,
-      views: 98,
-      createdAt: "2024.01.18",
-    },
-    {
-      id: "4",
-      prompt:
-        "블록체인 기술이 일상 생활에 어떻게 활용될 수 있을까요? 구체적인 예시를 들어주세요.",
-      likes: 21,
-      views: 87,
-      createdAt: "2024.01.17",
-    },
-    {
-      id: "5",
-      prompt: "기후 변화를 해결하기 위한 창의적인 아이디어를 제안해주세요.",
-      likes: 18,
-      views: 65,
-      createdAt: "2024.01.16",
-    },
-  ]);
 
   useEffect(() => {
     setIsMounted(true);
@@ -267,16 +164,16 @@ export function ProfilePage() {
               </div>
               <div className="flex-1">
                 <h1 className="text-2xl mb-2 font-semibold">
-                  {userStats.username}
+                  {address?.slice(0, 6)}...{address?.slice(-4)}
                 </h1>
                 <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 mb-4">
                   <span className="flex items-center gap-1">
                     <Calendar className="w-4 h-4" />
-                    Joined {userStats.joinDate}
+                    Joined {joinDate || 'Loading...'}
                   </span>
                   <span className="flex items-center gap-1">
                     <Award className="w-4 h-4" />
-                    Level {userStats.level}
+                    Level {userStats?.level || 1}
                   </span>
                 </div>
                 <Button
@@ -423,27 +320,21 @@ export function ProfilePage() {
           >
             Overview
           </button>
-          <button
-            onClick={() => setActiveTab("achievements")}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 ${
-              activeTab === "achievements"
-                ? "border-blue-500 text-blue-600"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-            style={
-              activeTab === "achievements"
-                ? { borderColor: "#0052FF", color: "#0052FF" }
-                : {}
-            }
-          >
-            <Award className="w-4 h-4" />
-            Achievements
-          </button>
         </div>
 
         {activeTab === "overview" && (
           <>
             {/* Stats Grid */}
+            {isLoadingProfile ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#0052FF' }} />
+              </div>
+            ) : !userStats ? (
+              <div className="text-center py-12 text-gray-500">
+                프로필 데이터를 불러오지 못했습니다
+              </div>
+            ) : (
+              <>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <Card
                 className="p-6 text-center border-2 shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-1"
@@ -453,7 +344,7 @@ export function ProfilePage() {
                   className="text-3xl mb-2 font-bold"
                   style={{ color: "#0052FF" }}
                 >
-                  {userStats.totalPrompts}
+                  {userStats.totalPosts}
                 </div>
                 <div className="text-sm text-gray-600 font-medium">
                   작성한 프롬프트
@@ -468,7 +359,7 @@ export function ProfilePage() {
                   className="text-3xl mb-2 font-bold"
                   style={{ color: "#0052FF" }}
                 >
-                  {userStats.sharedPrompts}
+                  {userStats.totalPosts}
                 </div>
                 <div className="text-sm text-gray-600 font-medium">
                   공유한 프롬프트
@@ -518,7 +409,8 @@ export function ProfilePage() {
               </div>
 
               <div className="space-y-3">
-                {sharedPosts.slice(0, 5).map((post, index) => (
+                {popularPosts && popularPosts.length > 0 ? (
+                  popularPosts.slice(0, 5).map((post, index) => (
                   <div
                     key={post.id}
                     className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg hover:bg-blue-50/30 transition-all duration-150 hover:shadow-sm"
@@ -539,176 +431,33 @@ export function ProfilePage() {
                       {index + 1}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm mb-2 line-clamp-2">{post.prompt}</p>
+                      <p className="text-sm font-medium mb-1">{post.title}</p>
+                      <p className="text-xs text-gray-600 mb-2 line-clamp-2">{post.prompt}</p>
                       <div className="flex items-center gap-4 text-xs text-gray-500">
                         <span className="flex items-center gap-1">
                           ❤️ {post.likes} 좋아요
                         </span>
-                        <span className="flex items-center gap-1">
-                          👁️ {post.views} 조회
-                        </span>
-                        <span>{post.createdAt}</span>
+                        <span className="text-blue-600">{post.modelName}</span>
+                        <span>{new Date(post.createdAt).toLocaleDateString('ko-KR')}</span>
                       </div>
                     </div>
                   </div>
-                ))}
+                ))
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-sm text-gray-500 mb-2">
+                      아직 공유한 프롬프트가 없습니다
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      첫 프롬프트를 공유하고 좋아요를 받아보세요!
+                    </p>
+                  </div>
+                )}
               </div>
-
-              {sharedPosts.length === 0 && (
-                <div className="text-center py-8">
-                  <p className="text-sm text-gray-500 mb-2">
-                    아직 공유한 프롬프트가 없습니다
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    첫 프롬프트를 공유하고 좋아요를 받아보세요!
-                  </p>
-                </div>
-              )}
             </Card>
+            </>
+            )}
           </>
-        )}
-
-        {activeTab === "achievements" && (
-          <div className="space-y-6">
-            {/* Achievement Stats */}
-            <div className="grid md:grid-cols-3 gap-4">
-              <Card
-                className="p-6 border-2 shadow-sm text-center"
-                style={{
-                  borderColor: "#0052FF20",
-                  background:
-                    "linear-gradient(135deg, #EEF5FF 0%, #FFFFFF 100%)",
-                }}
-              >
-                <div className="text-4xl mb-2">🏆</div>
-                <div
-                  className="text-3xl font-bold mb-1"
-                  style={{ color: "#0052FF" }}
-                >
-                  {achievements.filter((a) => a.unlocked).length}
-                </div>
-                <p className="text-xs text-gray-600">업적 달성</p>
-              </Card>
-
-              <Card
-                className="p-6 border-2 shadow-sm text-center"
-                style={{
-                  borderColor: "#0052FF20",
-                  background:
-                    "linear-gradient(135deg, #FFF7ED 0%, #FFFFFF 100%)",
-                }}
-              >
-                <div className="text-4xl mb-2">🎯</div>
-                <div
-                  className="text-3xl font-bold mb-1"
-                  style={{ color: "#F59E0B" }}
-                >
-                  {achievements.filter((a) => !a.unlocked).length}
-                </div>
-                <p className="text-xs text-gray-600">진행 중</p>
-              </Card>
-
-              <Card
-                className="p-6 border-2 shadow-sm text-center"
-                style={{
-                  borderColor: "#0052FF20",
-                  background:
-                    "linear-gradient(135deg, #F0FDF4 0%, #FFFFFF 100%)",
-                }}
-              >
-                <div className="text-4xl mb-2">⭐</div>
-                <div
-                  className="text-3xl font-bold mb-1"
-                  style={{ color: "#10B981" }}
-                >
-                  {Math.round(
-                    (achievements.filter((a) => a.unlocked).length /
-                      achievements.length) *
-                      100
-                  )}
-                  %
-                </div>
-                <p className="text-xs text-gray-600">완료율</p>
-              </Card>
-            </div>
-
-            {/* Achievement Badges */}
-            <Card
-              className="p-6 border-2 shadow-sm"
-              style={{ borderColor: "#0052FF20" }}
-            >
-              <div className="flex items-center gap-2 mb-6">
-                <Award className="w-5 h-5" style={{ color: "#0052FF" }} />
-                <h2 className="text-lg font-semibold">업적 뱃지</h2>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {achievements.map((achievement) => (
-                  <div
-                    key={achievement.id}
-                    className={`p-5 rounded-lg border-2 transition-all duration-200 ${
-                      achievement.unlocked
-                        ? "bg-gradient-to-br from-blue-50 to-white hover:shadow-lg hover:-translate-y-1"
-                        : "bg-gray-50 opacity-60"
-                    }`}
-                    style={{
-                      borderColor: achievement.unlocked
-                        ? "#0052FF40"
-                        : "#E5E7EB",
-                    }}
-                  >
-                    <div className="flex items-start gap-4">
-                      <div
-                        className={`text-4xl ${
-                          achievement.unlocked ? "" : "grayscale opacity-50"
-                        }`}
-                      >
-                        {achievement.icon}
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-sm mb-1">
-                          {achievement.name}
-                        </h3>
-                        <p className="text-xs text-gray-600 mb-2">
-                          {achievement.description}
-                        </p>
-                        {achievement.unlocked ? (
-                          <p className="text-xs" style={{ color: "#0052FF" }}>
-                            ✓ 달성 완료 • {achievement.unlockedAt}
-                          </p>
-                        ) : achievement.progress !== undefined ? (
-                          <div className="space-y-1">
-                            <div className="flex items-center justify-between text-xs text-gray-500">
-                              <span>진행률</span>
-                              <span>
-                                {achievement.progress} /{" "}
-                                {achievement.maxProgress}
-                              </span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div
-                                className="h-2 rounded-full transition-all duration-300"
-                                style={{
-                                  backgroundColor: "#0052FF",
-                                  width: `${
-                                    (achievement.progress! /
-                                      achievement.maxProgress!) *
-                                    100
-                                  }%`,
-                                }}
-                              />
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="text-xs text-gray-400">🔒 잠김</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </div>
         )}
       </Card>
     </div>

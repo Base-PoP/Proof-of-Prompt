@@ -1,15 +1,14 @@
-'use client';
-
 import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Textarea } from './ui/textarea';
 import { Copy, Maximize2, Loader2, Share2, ArrowLeft } from 'lucide-react';
-import { arenaApi, postsApi } from '../../lib/api';
+import { arenaApi } from '../../lib/api';
 import { useAuth } from '../hooks/useAuth';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { toast } from 'sonner';
+import { CodeBlock } from './CodeBlock';
 
 interface ChatMessage {
   matchId?: string;
@@ -19,45 +18,47 @@ interface ChatMessage {
   modelName?: string;
 }
 
+interface ChatHistoryItem {
+  id: string;
+  matchId: string;
+  title: string;
+  prompt: string;
+  response: string;
+  timestamp: string;
+}
+
 interface HomePageProps {
   onStartBattle?: (prompt: string) => void;
   onBack?: () => void;
   initialChatId?: string | null;
+  onChatCreated?: (matchId: string, prompt: string, response: string) => void;
+  chatHistory?: ChatHistoryItem[];
+  onShareToDashboard?: (matchId: string, prompt: string, response: string) => void;
 }
 
-export function HomePage({ onStartBattle, onBack, initialChatId }: HomePageProps) {
-  const { user, userAddress, requireAuth, isAuthenticated } = useAuth();
+export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [], onShareToDashboard }: HomePageProps) {
+  const { requireAuth } = useAuth();
   const [prompt, setPrompt] = useState('');
   const [currentMessage, setCurrentMessage] = useState<ChatMessage | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSharing, setIsSharing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Load chat from history if initialChatId is provided
   useEffect(() => {
-    if (initialChatId) {
-      loadChatFromHistory(initialChatId);
+    if (initialChatId && chatHistory.length > 0) {
+      const selectedChat = chatHistory.find(chat => chat.id === initialChatId);
+      if (selectedChat) {
+        setCurrentMessage({
+          matchId: selectedChat.matchId,
+          prompt: selectedChat.prompt,
+          response: selectedChat.response,
+        });
+      }
+    } else if (!initialChatId) {
+      // New chat - clear current message
+      setCurrentMessage(null);
     }
-  }, [initialChatId]);
-
-  const loadChatFromHistory = async (chatId: string) => {
-    setIsLoading(true);
-    try {
-      // Get post data from postsApi
-      const post = await postsApi.getPost(chatId);
-      setCurrentMessage({
-        prompt: post.prompt,
-        response: post.response,
-        modelId: post.modelId,
-        modelName: post.modelName,
-      });
-    } catch (err) {
-      setError('채팅을 불러오는데 실패했습니다.');
-      console.error('Failed to load chat:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [initialChatId, chatHistory]);
 
   const handleBackToHome = () => {
     setCurrentMessage(null);
@@ -74,56 +75,74 @@ export function HomePage({ onStartBattle, onBack, initialChatId }: HomePageProps
     setIsLoading(true);
     setError(null);
 
+    // 초기 메시지 설정 (프롬프트만 표시)
+    setCurrentMessage({
+      prompt: prompt.trim(),
+      response: '',
+    });
+
+    const currentPrompt = prompt.trim();
+    setPrompt('');
+
     try {
-      const userId = user?.wallet?.address;
-      const match = await arenaApi.createMatch(prompt, userId);
-      
-      // 단일 응답만 사용 (A 응답 사용)
-      setCurrentMessage({
-        matchId: match.matchId,
-        prompt: match.prompt,
-        response: match.responseA,
-        modelId: match.modelAId,
-      });
-      setPrompt('');
+      await arenaApi.createChatStream(
+        currentPrompt,
+        // onChunk: 실시간 충크 추가
+        (chunk: string) => {
+          setCurrentMessage(prev => prev ? {
+            ...prev,
+            response: prev.response + chunk
+          } : null);
+        },
+        // onComplete: 완료 시 matchId 저장 및 히스토리 추가
+        (matchId: number, promptText: string, fullResponse: string) => {
+          setCurrentMessage({
+            matchId: matchId.toString(),
+            prompt: promptText,
+            response: fullResponse,
+          });
+
+          if (onChatCreated) {
+            onChatCreated(matchId.toString(), promptText, fullResponse);
+          }
+
+          setIsLoading(false);
+        },
+        // onError: 에러 처리
+        (errorMsg: string) => {
+          setError(errorMsg);
+          setIsLoading(false);
+        }
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : '응답 생성 실패');
-      console.error('Failed to create match:', err);
-    } finally {
+      console.error('Failed to create chat:', err);
       setIsLoading(false);
     }
   };
 
   const handleShare = async () => {
-    if (!currentMessage) return;
+    if (!currentMessage || !currentMessage.matchId) return;
 
-    // 권한 체크
-    requireAuth(async () => {
-      setIsSharing(true);
-      try {
-        await postsApi.createPost(
+    // 게시글 작성 페이지로 이동 (로그인 체크)
+    requireAuth(() => {
+      if (onShareToDashboard) {
+        onShareToDashboard(
+          currentMessage.matchId!,
           currentMessage.prompt,
-          currentMessage.response,
-          userAddress || undefined,
-          currentMessage.modelId,
-          currentMessage.modelName || 'AI Model'
+          currentMessage.response
         );
-        toast.success('포스트가 공유되었습니다!', {
-          description: 'Dashboard 탭에서 확인할 수 있습니다.',
-        });
-      } catch (err) {
-        toast.error('공유 실패', {
-          description: err instanceof Error ? err.message : '다시 시도해주세요',
-        });
-        console.error('Failed to share post:', err);
-      } finally {
-        setIsSharing(false);
       }
-    }, '프롬프트를 공유하려면 지갑을 연결해주세요');
+    }, '게시글을 작성하려면 지갑을 연결해주세요');
   };
 
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
+  const handleCopy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('복사되었습니다!');
+    } catch (err) {
+      toast.error('복사에 실패했습니다');
+    }
   };
 
   // 메시지가 없을 때 - 초기 화면
@@ -244,15 +263,10 @@ export function HomePage({ onStartBattle, onBack, initialChatId }: HomePageProps
           variant="outline"
           size="icon"
           onClick={handleShare}
-          disabled={isSharing}
           className="mt-1 shrink-0"
-          title="프롬프트와 답변 공유"
+          title="게시글 작성하기"
         >
-          {isSharing ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Share2 className="w-4 h-4" />
-          )}
+          <Share2 className="w-4 h-4" />
         </Button>
         
         {/* Prompt Message Bubble */}
@@ -284,10 +298,61 @@ export function HomePage({ onStartBattle, onBack, initialChatId }: HomePageProps
               </button>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto text-gray-700 leading-relaxed prose prose-sm max-w-none">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {currentMessage.response}
-            </ReactMarkdown>
+          <div className="flex-1 overflow-y-scroll scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+            {isLoading && !currentMessage.response ? (
+              <div className="flex items-center gap-2 text-gray-500">
+                <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#0052FF' }} />
+                <span className="text-sm">AI가 답변을 생성하고 있습니다...</span>
+              </div>
+            ) : (
+              <div className="prose prose-sm max-w-none
+                prose-headings:font-bold prose-headings:text-gray-900
+                prose-h1:text-2xl prose-h1:mb-4 prose-h1:mt-6
+                prose-h2:text-xl prose-h2:mb-3 prose-h2:mt-5
+                prose-h3:text-lg prose-h3:mb-2 prose-h3:mt-4
+                prose-p:text-gray-700 prose-p:leading-relaxed prose-p:mb-3
+                prose-ul:my-3 prose-ul:list-disc prose-ul:pl-6 prose-ul:ml-0
+                prose-ol:my-3 prose-ol:list-decimal prose-ol:pl-6 prose-ol:ml-0
+                prose-li:text-gray-700 prose-li:mb-1 prose-li:marker:text-gray-500
+                prose-pre:bg-transparent prose-pre:p-0 prose-pre:m-0
+                prose-code:bg-gray-200 prose-code:text-gray-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:font-mono prose-code:before:content-[''] prose-code:after:content-['']
+                prose-strong:text-gray-900 prose-strong:font-semibold
+                prose-em:text-gray-700 prose-em:italic
+                prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline
+                prose-blockquote:border-l-4 prose-blockquote:border-gray-300 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-gray-600
+                prose-table:border-collapse prose-table:w-full prose-table:my-4
+                prose-thead:bg-gray-50
+                prose-th:border prose-th:border-gray-300 prose-th:px-4 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:text-gray-900
+                prose-td:border prose-td:border-gray-300 prose-td:px-4 prose-td:py-2 prose-td:text-gray-700
+                prose-tr:border-b prose-tr:border-gray-200
+              ">
+                <ReactMarkdown 
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    code({ node, inline, className, children, ...props }: any) {
+                      const match = /language-(\w+)/.exec(className || '');
+                      const language = match ? match[1] : '';
+                      
+                      if (!inline && language) {
+                        return (
+                          <CodeBlock language={language}>
+                            {String(children).replace(/\n$/, '')}
+                          </CodeBlock>
+                        );
+                      }
+                      
+                      return (
+                        <code className={className} {...props}>
+                          {children}
+                        </code>
+                      );
+                    }
+                  }}
+                >
+                  {currentMessage.response}
+                </ReactMarkdown>
+              </div>
+            )}
           </div>
         </Card>
       </div>

@@ -44,41 +44,111 @@ async function apiFetch<T>(
 
 // Arena API
 export const arenaApi = {
-  // Create a new match
-  createMatch: async (prompt: string, userId?: string) => {
+  // Create a new chat (single model response)
+  createChat: async (prompt: string, userId?: string) => {
     return apiFetch<{
-      matchId: string;
+      matchId: number;
       prompt: string;
-      responseA: string;
-      responseB: string;
-      modelAId: string;
-      modelBId: string;
-    }>('/arena/match', {
+      response: string;
+    }>('/arena/chat', {
       method: 'POST',
       body: JSON.stringify({ prompt, userId }),
     });
   },
 
-  // Submit a vote
-  vote: async (matchId: string, chosen: 'A' | 'B' | 'TIE', userId?: string) => {
+  // Create a chat with streaming (real-time typing effect)
+  createChatStream: async (
+    prompt: string,
+    onChunk: (chunk: string) => void,
+    onComplete: (matchId: number, prompt: string, fullResponse: string) => void,
+    onError: (error: string) => void
+  ) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/arena/chat/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error('No response body');
+      }
+
+      let fullResponse = '';
+      let matchId: number | null = null;
+      let promptText = prompt;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            try {
+              const parsed = JSON.parse(data);
+
+              if (parsed.type === 'start') {
+                matchId = parsed.matchId;
+                promptText = parsed.prompt;
+              } else if (parsed.type === 'chunk') {
+                fullResponse += parsed.content;
+                onChunk(parsed.content);
+              } else if (parsed.type === 'done') {
+                if (matchId !== null) {
+                  onComplete(matchId, promptText, fullResponse);
+                }
+              } else if (parsed.type === 'error') {
+                onError(parsed.error || 'Unknown error');
+              }
+            } catch (e) {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+    } catch (error) {
+      onError(error instanceof Error ? error.message : 'Failed to stream response');
+    }
+  },
+
+  // Create a post (reveal model info)
+  createPost: async (matchId: number, title: string, walletAddress?: string, tags?: string[]) => {
     return apiFetch<{
       ok: boolean;
-      refChoice?: string;
-      modelA?: { rating: number };
-      modelB?: { rating: number };
-      user?: { score: number };
-      vote?: {
-        referenceScore: number;
-        consistencyScore: number;
-        consensusScore: number;
-        totalScore: number;
+      post: {
+        id: number;
+        matchId: number;
+        title: string;
+        prompt: string;
+        response: string;
+        userId?: number;
+        modelId: number;
+        modelName: string;
+        modelProvider: string;
+        likes: number;
+        tags?: string[];
+        createdAt: string;
       };
-    }>('/arena/vote', {
+    }>('/arena/post', {
       method: 'POST',
       body: JSON.stringify({ 
-        matchId: Number(matchId), 
-        chosen, 
-        userId: userId ? Number(userId) : 1 
+        matchId,
+        title,
+        walletAddress,
+        tags
       }),
     });
   },
@@ -90,11 +160,13 @@ export const leaderboardApi = {
   getModels: async () => {
     return apiFetch<Array<{
       rank: number;
-      id: string;
+      id: number;
       name: string;
       provider: string;
       rating: number;
-      gamesPlayed: number;
+      totalMatches: number;
+      postedMatches: number;
+      adoptionRate: number;
     }>>('/leaderboard/models');
   },
 
@@ -102,9 +174,11 @@ export const leaderboardApi = {
   getUsers: async () => {
     return apiFetch<Array<{
       rank: number;
-      id: string;
+      id: number;
       nickname: string;
       score: number;
+      totalLikes: number;
+      postsCount: number;
     }>>('/leaderboard/users');
   },
 };
@@ -313,7 +387,7 @@ export const postsApi = {
   },
 
   // 포스트 목록 조회
-  getPosts: async (limit: number = 20, offset: number = 0) => {
+  getPosts: async (limit: number = 20, offset: number = 0, walletAddress?: string) => {
     // 테스트 모드: 로컬 스토리지 사용
     if (USE_MOCK_DATA) {
       console.log('🧪 Test mode: Using local storage for getPosts');
@@ -328,8 +402,13 @@ export const postsApi = {
     }
 
     try {
+      const url = walletAddress 
+        ? `/posts?limit=${limit}&offset=${offset}&walletAddress=${encodeURIComponent(walletAddress)}`
+        : `/posts?limit=${limit}&offset=${offset}`;
+      
       return await apiFetch<Array<{
         id: string;
+        title?: string;
         prompt: string;
         response: string;
         userId?: string;
@@ -338,7 +417,8 @@ export const postsApi = {
         modelName?: string;
         createdAt: string;
         likes: number;
-      }>>(`/posts?limit=${limit}&offset=${offset}`);
+        isLiked?: boolean;
+      }>>(url);
     } catch (error) {
       console.warn('Backend not available, using local storage');
       const posts = localPostsStorage.getPosts();
@@ -353,7 +433,7 @@ export const postsApi = {
   },
 
   // 단일 포스트 조회
-  getPost: async (postId: string) => {
+  getPost: async (postId: string, walletAddress?: string) => {
     // 테스트 모드: 로컬 스토리지 사용
     if (USE_MOCK_DATA) {
       console.log('🧪 Test mode: Using local storage for getPost');
@@ -370,8 +450,13 @@ export const postsApi = {
     }
 
     try {
+      const url = walletAddress
+        ? `/posts/${postId}?walletAddress=${encodeURIComponent(walletAddress)}`
+        : `/posts/${postId}`;
+      
       return await apiFetch<{
         id: string;
+        title?: string;
         prompt: string;
         response: string;
         userId?: string;
@@ -380,7 +465,8 @@ export const postsApi = {
         modelName?: string;
         createdAt: string;
         likes: number;
-      }>(`/posts/${postId}`);
+        isLiked?: boolean;
+      }>(url);
     } catch (error) {
       console.warn('Backend not available, using local storage');
       const posts = localPostsStorage.getPosts();
@@ -429,10 +515,11 @@ export const postsApi = {
     try {
       return await apiFetch<{
         ok: boolean;
+        liked: boolean;
         likes: number;
       }>(`/posts/${postId}/like`, {
         method: 'POST',
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ walletAddress: userId }),
       });
     } catch (error) {
       console.warn('Backend not available, using local storage');
@@ -457,9 +544,68 @@ export const postsApi = {
       const updatedPost = updatedPosts.find((p) => p.id === postId);
       return {
         ok: true,
+        liked: !isLiked,
         likes: updatedPost?.likes || 0,
       };
     }
+  },
+
+  // 포스트 삭제
+  deletePost: async (postId: string, walletAddress?: string) => {
+    if (USE_MOCK_DATA) {
+      console.log('🧪 Test mode: Using local storage for deletePost');
+      const posts = localPostsStorage.getPosts();
+      const filteredPosts = posts.filter(p => p.id !== postId);
+      localPostsStorage.savePosts(filteredPosts);
+      return { ok: true, message: 'Post deleted successfully' };
+    }
+
+    try {
+      return await apiFetch<{
+        ok: boolean;
+        message: string;
+      }>(`/posts/${postId}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ walletAddress }),
+      });
+    } catch (error) {
+      console.warn('Backend not available, using local storage');
+      const posts = localPostsStorage.getPosts();
+      const filteredPosts = posts.filter(p => p.id !== postId);
+      localPostsStorage.savePosts(filteredPosts);
+      return { ok: true, message: 'Post deleted successfully' };
+    }
+  },
+};
+
+// Users API
+export const usersApi = {
+  // Get user profile with stats and popular posts
+  getUserProfile: async (walletAddress: string) => {
+    return apiFetch<{
+      user: {
+        id: number;
+        nickname: string;
+        createdAt: string;
+      };
+      stats: {
+        totalPosts: number;
+        totalLikes: number;
+        score: number;
+        level: number;
+      };
+      popularPosts: Array<{
+        id: number;
+        title: string;
+        prompt: string;
+        response: string;
+        modelName: string;
+        modelProvider: string;
+        likes: number;
+        createdAt: string;
+        tags: string[];
+      }>;
+    }>(`/users/${walletAddress}/profile`);
   },
 };
 

@@ -3,7 +3,6 @@
 import { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma";
-import { updateElo, EloOutcome } from "../arena/elo";
 
 // -------- Mock LLM 응답 생성 --------
 export async function generateMockLLM(prompt: string, model: any) {
@@ -204,32 +203,7 @@ export const voteMockHandler = async (req: Request, res: Response) => {
       }
     });
 
-    // 7) Elo 계산
-    const outcome: EloOutcome =
-      chosen === "A" ? "A_WIN" : chosen === "B" ? "B_WIN" : "TIE";
-
-    const { newRatingA, newRatingB } = updateElo(
-      match.modelA.rating,
-      match.modelB.rating,
-      outcome
-    );
-
-    const [updatedA, updatedB] = await Promise.all([
-      prisma.model.update({
-        where: { id: match.modelAId },
-        data: {
-          rating: newRatingA,
-          gamesPlayed: { increment: 1 }
-        }
-      }),
-      prisma.model.update({
-        where: { id: match.modelBId },
-        data: {
-          rating: newRatingB,
-          gamesPlayed: { increment: 1 }
-        }
-      })
-    ]);
+    // 7) Mock에서는 ELO 업데이트 생략 (단순 테스트용)
 
     // 8) 유저 점수 업데이트
     const updatedUser = await prisma.user.update({
@@ -243,8 +217,8 @@ export const voteMockHandler = async (req: Request, res: Response) => {
       ok: true,
       matchId,
       refChoice,
-      modelA: updatedA,
-      modelB: updatedB,
+      modelA: match.modelA,
+      modelB: match.modelB,
       user: updatedUser,
       vote
     });

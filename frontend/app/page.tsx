@@ -24,7 +24,10 @@ interface Problem {
 
 interface ChatHistoryItem {
   id: string;
+  matchId: string;
   title: string;
+  prompt: string;
+  response: string;
   timestamp: string;
 }
 
@@ -38,6 +41,8 @@ export default function Home() {
   const [directPrompt, setDirectPrompt] = useState<string>('');
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
+  const [draftPost, setDraftPost] = useState<{ matchId: string; prompt: string; response: string } | null>(null);
 
   // 초기 마운트 시 localStorage에서 상태 복원
   useEffect(() => {
@@ -45,10 +50,18 @@ export default function Home() {
       const savedPage = localStorage.getItem('currentPage') as Page;
       const savedPostId = localStorage.getItem('selectedPostId');
       const savedChatId = localStorage.getItem('activeChatId');
+      const savedChatHistory = localStorage.getItem('chatHistory');
       
       if (savedPage) setCurrentPage(savedPage);
       if (savedPostId) setSelectedPostId(savedPostId);
       if (savedChatId) setActiveChatId(savedChatId);
+      if (savedChatHistory) {
+        try {
+          setChatHistory(JSON.parse(savedChatHistory));
+        } catch (e) {
+          console.error('Failed to parse chat history:', e);
+        }
+      }
       
       // 상태 복원 완료
       setIsRestoringState(false);
@@ -81,35 +94,42 @@ export default function Home() {
       }
     }
   }, [activeChatId, isRestoringState]);
-  
-  // Sample chat history (matching post IDs from api.ts)
-  const [chatHistory] = useState<ChatHistoryItem[]>([
-    {
-      id: '1',
-      title: 'React에서 useEffect의 cleanup 함수는 언제 실행되나요?',
-      timestamp: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
-    },
-    {
-      id: '2',
-      title: 'TypeScript에서 제네릭을 사용하는 이유는 무엇인가요?',
-      timestamp: new Date(Date.now() - 7200000).toISOString(), // 2 hours ago
-    },
-    {
-      id: '3',
-      title: 'Next.js의 Server Components와 Client Components의 차이점은?',
-      timestamp: new Date(Date.now() - 10800000).toISOString(), // 3 hours ago
-    },
-    {
-      id: '4',
-      title: 'async/await과 Promise의 차이점을 설명해주세요',
-      timestamp: new Date(Date.now() - 14400000).toISOString(), // 4 hours ago
-    },
-    {
-      id: '5',
-      title: 'CSS Flexbox와 Grid의 사용 시나리오는?',
-      timestamp: new Date(Date.now() - 18000000).toISOString(), // 5 hours ago
-    },
-  ]);
+
+  // chatHistory가 변경될 때 localStorage에 저장
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !isRestoringState) {
+      localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+    }
+  }, [chatHistory, isRestoringState]);
+
+  // 새 채팅 추가 함수
+  const addChatToHistory = (matchId: string, prompt: string, response: string) => {
+    const newChat: ChatHistoryItem = {
+      id: Date.now().toString(),
+      matchId,
+      title: prompt.length > 50 ? prompt.substring(0, 50) + '...' : prompt,
+      prompt,
+      response,
+      timestamp: new Date().toISOString(),
+    };
+
+    setChatHistory(prev => [newChat, ...prev]);
+    setActiveChatId(newChat.id);
+  };
+
+  // 채팅 선택 핸들러
+  const handleSelectChat = (chatId: string) => {
+    setActiveChatId(chatId);
+    setCurrentPage('home');
+  };
+
+  // 채팅 삭제 핸들러
+  const handleDeleteChat = (chatId: string) => {
+    setChatHistory(prev => prev.filter(chat => chat.id !== chatId));
+    if (activeChatId === chatId) {
+      setActiveChatId(null);
+    }
+  };
 
   const handleNewChat = () => {
     setCurrentPage('home');
@@ -117,6 +137,7 @@ export default function Home() {
     setDirectPrompt('');
     setSelectedPostId(null);
     setActiveChatId(null);
+    setDraftPost(null); // Clear draft post
     // localStorage 정리
     if (typeof window !== 'undefined') {
       localStorage.setItem('currentPage', 'home');
@@ -141,15 +162,14 @@ export default function Home() {
     setCurrentPage('conversation');
   };
 
-  const handleSelectChat = (chatId: string) => {
-    setActiveChatId(chatId);
-    setSelectedPostId(null); // Clear selectedPostId when viewing from chat history
-    setCurrentPage('home'); // Show in HomePage instead of ConversationPage
+  const handleShareToDashboard = (matchId: string, prompt: string, response: string) => {
+    setDraftPost({ matchId, prompt, response });
+    setCurrentPage('dashboard');
   };
 
-  const handleDeleteChat = (chatId: string) => {
-    // TODO: Implement chat deletion
-    console.log('Delete chat:', chatId);
+  const handlePostCreated = () => {
+    // 게시글 작성 완료 후 draftPost 초기화
+    setDraftPost(null);
   };
 
   const handleBackFromConversation = () => {
@@ -167,9 +187,18 @@ export default function Home() {
   const renderPage = () => {
     switch (currentPage) {
       case 'home':
-        return <HomePage onStartBattle={handleStartBattle} onBack={handleNewChat} initialChatId={activeChatId} />;
+        return (
+          <HomePage 
+            onStartBattle={handleStartBattle} 
+            onBack={handleNewChat} 
+            initialChatId={activeChatId}
+            onChatCreated={addChatToHistory}
+            chatHistory={chatHistory}
+            onShareToDashboard={handleShareToDashboard}
+          />
+        );
       case 'dashboard':
-        return <DashboardPage onNewChat={handleNewChat} onSelectPost={handleSelectPost} />;
+        return <DashboardPage onNewChat={handleNewChat} onSelectPost={handleSelectPost} draftPost={draftPost} onPostCreated={handlePostCreated} />;
       case 'conversation':
         return selectedPostId ? (
           <ConversationPage postId={selectedPostId} onBack={handleBackFromConversation} />
@@ -195,7 +224,12 @@ export default function Home() {
       {/* Sidebar */}
       <Sidebar
         currentPage={currentPage}
-        onNavigate={setCurrentPage}
+        onNavigate={(page) => {
+          if (page === 'dashboard') {
+            setDraftPost(null); // Clear draft when navigating to dashboard
+          }
+          setCurrentPage(page);
+        }}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
         onNewChat={handleNewChat}

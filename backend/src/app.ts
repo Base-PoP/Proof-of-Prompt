@@ -6,7 +6,8 @@ import dotenv from "dotenv";
 import { arenaRouter } from "./modules/arena/arena.routes";
 import { leaderboardRouter } from "./modules/leaderboard/leaderboard.routes";
 import mockRouter from "./modules/mock/mock.routes";
-import { campaignRouter } from "./modules/campaign/campaign.routes";
+import postsRouter from "./modules/posts/posts.routes";
+import { usersRouter } from "./modules/users/users.routes";
 dotenv.config();
 
 export const createApp = () => {
@@ -52,8 +53,11 @@ export const createApp = () => {
   // leaderboard 라우터
   app.use("/leaderboard", leaderboardRouter);
 
-  // campaign 라우터 (Prize Battle)
-  app.use("/campaign", campaignRouter);
+  // posts 라우터
+  app.use("/posts", postsRouter);
+
+  // users 라우터
+  app.use("/users", usersRouter);
 
   return app;
 };

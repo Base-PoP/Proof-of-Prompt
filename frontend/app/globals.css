@@ -205,4 +205,16 @@ html {
     min-height: 600px !important;
     max-height: 600px !important;
   }
+
+  /* Fix list markers in prose */
+  .prose ol,
+  .prose ul {
+    list-style-position: outside;
+    padding-left: 1.5rem;
+  }
+
+  .prose ol li::marker,
+  .prose ul li::marker {
+    color: rgb(107 114 128); /* gray-500 */
+  }
 }

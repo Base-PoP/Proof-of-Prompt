@@ -42,6 +42,8 @@ model User {
 
   prompts   Prompt[]
   votes     Vote[]
+  posts     Post[]
+  postLikes PostLike[]
   campaignRewards CampaignReward[]
 
   @@index([score, createdAt])
@@ -133,16 +135,18 @@ model Match {
 
   promptId   Int
   modelAId   Int
-  modelBId   Int
+  modelBId   Int?      // Optional for single-model chat
   campaignId Int?      // 캠페인에 속한 매치인지
+  createdAt  DateTime  @default(now())
 
   prompt     Prompt    @relation(fields: [promptId], references: [id], onDelete: Cascade)
   modelA     Model     @relation("ModelA", fields: [modelAId], references: [id], onDelete: Cascade)
-  modelB     Model     @relation("ModelB", fields: [modelBId], references: [id], onDelete: Cascade)
+  modelB     Model?    @relation("ModelB", fields: [modelBId], references: [id], onDelete: Cascade)
   campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
 
   responses  Response[]
   votes      Vote[]
+  post       Post?
   
   @@index([campaignId])
 }
@@ -186,4 +190,72 @@ model Vote {
   @@index([matchId])
   @@index([userId])
   @@index([createdAt])
+}
+
+// ---------------------------
+// Model: Post (게시글)
+// ---------------------------
+model Post {
+  id        Int      @id @default(autoincrement())
+  matchId   Int      @unique
+  title     String
+  userId    Int?
+  likes     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  match     Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  postLikes PostLike[]
+  postTags  PostTag[]
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([likes])
+}
+
+// ---------------------------
+// Model: Tag (태그)
+// ---------------------------
+model Tag {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  createdAt DateTime  @default(now())
+
+  postTags  PostTag[]
+
+  @@index([name])
+}
+
+// ---------------------------
+// Model: PostTag (게시글-태그 관계)
+// ---------------------------
+model PostTag {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  tagId     Int
+  createdAt DateTime @default(now())
+
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, tagId])
+  @@index([postId])
+  @@index([tagId])
+}
+
+// ---------------------------
+// Model: PostLike (게시글 좋아요)
+// ---------------------------
+model PostLike {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  userId    Int
+  createdAt DateTime @default(now())
+
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@index([userId])
 }

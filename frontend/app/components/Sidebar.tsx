@@ -18,7 +18,7 @@ interface SidebarProps {
   chatHistory?: ChatHistoryItem[];
   onSelectChat?: (chatId: string) => void;
   onDeleteChat?: (chatId: string) => void;
-  activeChatId?: string;
+  activeChatId?: string | null;
 }
 
 export function Sidebar({ 
