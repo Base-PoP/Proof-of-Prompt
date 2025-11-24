@@ -91,11 +91,18 @@ export async function evaluateAchievementsForUser(userId: number, stats?: Achiev
   for (const ach of allAchievements) {
     const already = userAchievementMap.get(ach.id);
     if (meetsAchievementCondition(ach.condition, computedStats) && !already) {
-      const created = await prisma.userAchievement.create({
-        data: { userId: user.id, achievementId: ach.id },
-        include: { achievement: true }
-      });
-      userAchievementMap.set(ach.id, created);
+      try {
+        const created = await prisma.userAchievement.create({
+          data: { userId: user.id, achievementId: ach.id },
+          include: { achievement: true }
+        });
+        userAchievementMap.set(ach.id, created);
+      } catch (err: any) {
+        // 동시성/중복으로 인한 유니크 제약 위반은 무시하고 진행
+        if (err?.code !== 'P2002') {
+          throw err;
+        }
+      }
     }
   }
 }
@@ -133,4 +140,3 @@ export function enrichAchievementsWithProgress(achievements: any[], stats: Achie
     };
   });
 }
-

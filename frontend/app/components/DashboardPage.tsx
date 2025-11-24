@@ -3,14 +3,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Heart, Loader2, Clock, MessageSquare, X, Trash2 } from 'lucide-react';
+import { Heart, Loader2, Clock, Trash2 } from 'lucide-react';
 import { promptsApi, arenaApi } from '../../lib/api';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
 import { env } from '../../lib/config';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { Category, CATEGORIES, CATEGORY_COLORS } from '../../lib/constants';
 
 interface Post {
@@ -35,6 +32,20 @@ interface DashboardPageProps {
   draftPost?: { matchId: string; prompt: string; response: string } | null;
   onPostCreated?: () => void;
 }
+
+const sortChipClass = (active: boolean) =>
+  `px-4 py-2 rounded-full text-sm font-semibold transition-all border ${
+    active
+      ? 'bg-[#0052FF] text-white border-transparent shadow-[0_12px_30px_rgba(0,82,255,0.22)]'
+      : 'bg-white text-[#1f3b66] border-[#d7e3f7] hover:bg-[#eef3ff]'
+  }`;
+
+const categoryChipClass = (active: boolean) =>
+  `px-4 py-2 rounded-full text-sm font-medium transition-all border ${
+    active
+      ? 'bg-[#0052FF] text-white border-transparent shadow-[0_12px_30px_rgba(0,82,255,0.22)]'
+      : 'bg-white text-[#1f3b66] border-[#d7e3f7] hover:bg-[#eef3ff]'
+  }`;
 
 export function DashboardPage({ onNewChat, onSelectPost, draftPost, onPostCreated }: DashboardPageProps) {
   const { requireAuth, userAddress } = useAuth();
@@ -226,7 +237,7 @@ export function DashboardPage({ onNewChat, onSelectPost, draftPost, onPostCreate
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6">
+    <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Test Mode Banner */}
       {env.USE_MOCK_DATA && (
         <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -240,62 +251,43 @@ export function DashboardPage({ onNewChat, onSelectPost, draftPost, onPostCreate
         </div>
       )}
 
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2" style={{ color: '#0052FF' }}>
-          대시보드
-        </h1>
-        <p className="text-gray-600">
-          공유된 프롬프트를 클릭하여 대화 내용을 확인하세요
-        </p>
-      </div>
-
       {/* Sort and Category Filter */}
       <div className="mb-6 space-y-3">
-        {/* Sort Buttons */}
         <div className="flex gap-2">
-          <Button
+          <button
+            type="button"
             onClick={() => setSortBy('latest')}
-            variant={sortBy === 'latest' ? "default" : "outline"}
-            size="sm"
-            className="rounded-full"
-            style={sortBy === 'latest' ? { backgroundColor: '#0052FF' } : {}}
+            className={sortChipClass(sortBy === 'latest')}
           >
             최신순
-          </Button>
-          <Button
+          </button>
+          <button
+            type="button"
             onClick={() => setSortBy('popular')}
-            variant={sortBy === 'popular' ? "default" : "outline"}
-            size="sm"
-            className="rounded-full"
-            style={sortBy === 'popular' ? { backgroundColor: '#0052FF' } : {}}
+            className={sortChipClass(sortBy === 'popular')}
           >
             인기순
-          </Button>
+          </button>
         </div>
 
         {/* Category Filter */}
         <div className="flex flex-wrap gap-2">
-          <Button
+          <button
+            type="button"
             onClick={() => setSelectedCategory(null)}
-            variant={selectedCategory === null ? "default" : "outline"}
-            size="sm"
-            className="rounded-full"
-            style={selectedCategory === null ? { backgroundColor: '#0052FF' } : {}}
+            className={categoryChipClass(selectedCategory === null)}
           >
             전체
-          </Button>
+          </button>
           {CATEGORIES.map(category => (
-            <Button
+            <button
+              type="button"
               key={category}
               onClick={() => setSelectedCategory(category)}
-              variant={selectedCategory === category ? "default" : "outline"}
-              size="sm"
-              className="rounded-full"
-              style={selectedCategory === category ? { backgroundColor: '#0052FF' } : {}}
+              className={categoryChipClass(selectedCategory === category)}
             >
               {category}
-            </Button>
+            </button>
           ))}
         </div>
       </div>
@@ -326,78 +318,72 @@ export function DashboardPage({ onNewChat, onSelectPost, draftPost, onPostCreate
 
       {!isLoading && posts.length > 0 && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="flex flex-col gap-4">
             {posts.map((post) => (
               <Card
                 key={post.id}
                 onClick={() => handleCardClick(post.id)}
-                className="p-5 border hover:shadow-lg transition-all duration-200 cursor-pointer group relative flex flex-col h-full"
-                style={{ borderColor: '#E5E7EB' }}
+                className="p-4 border border-[#e5eaf5] bg-white/95 hover:bg-white rounded-2xl shadow-[0_8px_28px_rgba(43,91,173,0.06)] hover:shadow-[0_12px_32px_rgba(43,91,173,0.1)] hover:-translate-y-0.5 transition-all duration-200 cursor-pointer group relative flex flex-row items-start gap-3"
               >
                 {/* 삭제 버튼 - 자신의 게시글인 경우만 표시 */}
                 {post.userName === userAddress && (
                   <button
                     onClick={(e) => handleDelete(post.id, e)}
-                    className="absolute top-3 right-3 p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                    className="absolute top-3 right-3 p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors opacity-0 group-hover:opacity-100 z-10"
                     title="게시글 삭제"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 )}
 
-                {/* 제목 */}
-                <h3 className="text-lg font-bold text-gray-900 mb-3 line-clamp-2 group-hover:text-blue-600 transition-colors pr-8">
-                  {post.title || post.prompt.substring(0, 50) + '...'}
-                </h3>
-
-                {/* 프롬프트 미리보기 */}
-                <p className="text-sm text-gray-600 mb-4 line-clamp-3 flex-1">
-                  {post.prompt}
-                </p>
-
-                {/* 카테고리 */}
-                {post.category && (
-                  <div className="flex flex-wrap gap-1.5 mb-3">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${CATEGORY_COLORS[post.category] || 'bg-gray-100 text-gray-800'}`}
-                    >
-                      {post.category}
-                    </span>
-                  </div>
-                )}
-
-                {/* Footer */}
-                <div className="flex items-center justify-between text-xs text-gray-500 mt-auto pt-4 border-t border-gray-100">
-                  <div className="flex items-center gap-3">
-                    {/* 모델 정보 */}
-                    {post.modelName && (
-                      <span className="flex items-center gap-1">
-                        <MessageSquare className="w-3.5 h-3.5" />
-                        {post.modelName}
-                      </span>
-                    )}
-                    
-                    {/* 시간 */}
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" />
-                      {formatTimeAgo(post.createdAt)}
-                    </span>
-                  </div>
-
-                  {/* 좋아요 */}
+                {/* Left: Like Button */}
+                <div className="flex flex-col items-center min-w-[54px] pt-0.5">
                   <button
                     onClick={(e) => handleLike(post.id, e)}
-                    className={`flex items-center gap-1 px-2 py-1 rounded transition-colors ${
+                    aria-pressed={!!post.isLiked}
+                    className={`flex flex-col items-center gap-1 px-2 py-2 rounded-2xl border transition-all ${
                       post.isLiked
-                        ? 'text-red-600'
-                        : 'text-gray-600 hover:text-red-600'
+                        ? 'text-[#ff6b81] border-[#ffd8e1] bg-[#fff1f4] shadow-[0_8px_24px_rgba(255,105,140,0.18)]'
+                        : 'text-[#9aa8c4] border-transparent hover:text-[#ff6b81] hover:bg-[#f7f9fe] hover:border-[#e5eaf5]'
                     }`}
                   >
                     <Heart
-                      className={`w-4 h-4 ${post.isLiked ? 'fill-current' : ''}`}
+                      className={`w-5 h-5 ${post.isLiked ? 'fill-current' : ''}`}
                     />
-                    <span className="text-sm font-medium">{post.likes}</span>
+                    <span className="text-[13px] font-semibold text-[#7a879f]">{post.likes}</span>
                   </button>
+                </div>
+
+                {/* Middle: Content */}
+                <div className="flex-1 min-w-0 flex flex-col gap-2.5">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1.5">
+                    <div className="min-w-0">
+                      <h3 className="text-base font-bold text-gray-900 group-hover:text-[#1b5cff] transition-colors truncate">
+                        {post.title || 'Auto-generated Title'}
+                      </h3>
+                      <p className="text-sm text-gray-600 mt-1 line-clamp-1">
+                        {post.prompt}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 text-[13px] text-[#98a2b3] shrink-0 pt-0.5">
+                      <Clock className="w-4 h-4" />
+                      <span>{formatTimeAgo(post.createdAt)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    {post.category && (
+                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-[12px] font-semibold border ${CATEGORY_COLORS[post.category]}`}>
+                        {post.category}
+                      </span>
+                    )}
+                    <div className="flex items-center gap-2 text-[13px] text-[#6b7a99]">
+                      <div className="w-7 h-7 rounded-full bg-[#f1f5fb] text-[#365486] flex items-center justify-center text-[11px] font-bold">
+                        US
+                      </div>
+                      <span className="truncate max-w-[220px]">{post.userName || 'User'}</span>
+                    </div>
+                  </div>
                 </div>
               </Card>
             ))}

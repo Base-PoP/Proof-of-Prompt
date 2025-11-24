@@ -43,6 +43,7 @@ export default function Home() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
   const [draftPost, setDraftPost] = useState<{ matchId: string; prompt: string; response: string } | null>(null);
+  const [homeResetKey, setHomeResetKey] = useState(0);
 
   // 초기 마운트 시 localStorage에서 상태 복원
   useEffect(() => {
@@ -138,6 +139,7 @@ export default function Home() {
     setSelectedPostId(null);
     setActiveChatId(null);
     setDraftPost(null); // Clear draft post
+    setHomeResetKey(prev => prev + 1);
     // localStorage 정리
     if (typeof window !== 'undefined') {
       localStorage.setItem('currentPage', 'home');
@@ -195,6 +197,7 @@ export default function Home() {
             onChatCreated={addChatToHistory}
             chatHistory={chatHistory}
             onShareToDashboard={handleShareToDashboard}
+            resetKey={homeResetKey}
           />
         );
       case 'dashboard':

@@ -30,8 +30,12 @@ export async function recordPaymentAuthorization(walletAddress: string, rawAuth:
   const validBefore = parsed?.validBefore ? BigInt(parsed.validBefore) : undefined;
 
   const exists = await prisma.paymentAuthorization.findUnique({ where: { nonce } });
+  // 동일 지갑이 이미 사용한 nonce라면 재사용을 허용한다.
   if (exists) {
-    throw new Error('Payment authorization already used');
+    if (exists.walletAddress?.toLowerCase() !== walletAddress.toLowerCase()) {
+      throw new Error('Payment authorization already used');
+    }
+    return;
   }
 
   await prisma.paymentAuthorization.create({
@@ -49,4 +53,3 @@ export const paymentConstants = {
   PAY_TO_ADDRESS,
   CHAIN_ID,
 };
-

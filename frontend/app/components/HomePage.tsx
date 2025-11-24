@@ -37,15 +37,31 @@ interface HomePageProps {
   onChatCreated?: (matchId: string, prompt: string, response: string) => void;
   chatHistory?: ChatHistoryItem[];
   onShareToDashboard?: (sharedPromptId: string) => void;
+  resetKey?: number;
 }
 
-export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [], onShareToDashboard }: HomePageProps) {
+export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [], onShareToDashboard, resetKey }: HomePageProps) {
   const { requireAuth, userAddress } = useAuth();
   const [prompt, setPrompt] = useState('');
   const [currentMessage, setCurrentMessage] = useState<ChatMessage | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { pendingPayment, setPendingPayment, status: paymentStatus, setStatus: setPaymentStatus, paymentAuth, setPaymentAuth, lastAuth, setLastAuth, signForPayment, handlePaymentError } = usePayment();
+  const [sharedPromptIds, setSharedPromptIds] = useState<Set<string>>(new Set());
+  const { pendingPayment, setPendingPayment, status: paymentStatus, setStatus: setPaymentStatus, paymentAuth, setPaymentAuth, lastAuth, setLastAuth, lastAuthAddress, signForPayment, handlePaymentError } = usePayment(userAddress || undefined);
+
+  // 로컬 저장소에 공유된 matchId 기록
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const saved = localStorage.getItem('sharedPromptIds');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as string[];
+        setSharedPromptIds(new Set(parsed));
+      } catch (e) {
+        console.error('Failed to load sharedPromptIds', e);
+      }
+    }
+  }, []);
 
   // Load chat from history if initialChatId is provided
   useEffect(() => {
@@ -64,6 +80,17 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
     }
   }, [initialChatId, chatHistory]);
 
+  const markShared = (matchId: string) => {
+    setSharedPromptIds(prev => {
+      const next = new Set(prev);
+      next.add(matchId);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('sharedPromptIds', JSON.stringify(Array.from(next)));
+      }
+      return next;
+    });
+  };
+
   const handleBackToHome = () => {
     setCurrentMessage(null);
     setPrompt('');
@@ -72,6 +99,15 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
       onBack();
     }
   };
+
+  // 외부에서 새로운 채팅 신호가 올 때 입력/상태 초기화
+  useEffect(() => {
+    if (resetKey !== undefined) {
+      setPrompt('');
+      setCurrentMessage(null);
+      setError(null);
+    }
+  }, [resetKey]);
 
   const handleSubmitWithPrompt = useCallback(async (promptText: string, isPaymentRetry: boolean = false, authPayload?: string | null) => {
     if (!promptText.trim()) return;
@@ -98,6 +134,10 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
     }
 
     try {
+      const normalizedAddr = userAddress?.toLowerCase?.();
+      const addressMismatch =
+        lastAuthAddress && normalizedAddr && lastAuthAddress !== normalizedAddr;
+      const authForRequest = authPayload ?? (addressMismatch ? null : paymentAuth ?? lastAuth);
       await arenaApi.createChatStream(
         currentPrompt,
         // onChunk: 실시간 충크 추가
@@ -131,7 +171,7 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
           setIsLoading(false);
           setPaymentStatus('idle');
         },
-        authPayload ?? paymentAuth ?? lastAuth, // 서명 payload (직접 전달 우선, 이전 서명 재사용)
+        authForRequest, // 서명 payload (직접 전달 우선, 이전 서명 재사용)
         userAddress || undefined
       );
     } catch (err: any) {
@@ -196,6 +236,17 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
   const handleShare = async () => {
     if (!currentMessage || !currentMessage.matchId) return;
 
+    const agreed = confirm('대화 내용에 개인정보가 포함되지 않았음을 확인했으며, 공개에 동의하시나요?');
+    if (!agreed) return;
+
+    if (sharedPromptIds.has(currentMessage.matchId)) {
+      toast.error('이미 공유된 대화입니다', {
+        description: '대시보드에서 확인하세요.',
+      });
+      return;
+    }
+
+    const toastId = toast.loading('게시글을 공유하고 있습니다...');
     requireAuth(async () => {
       try {
         setIsLoading(true);
@@ -208,14 +259,26 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
             undefined,
             undefined
           );
-          onShareToDashboard?.(created.promptId?.toString?.() || created.id?.toString?.() || '');
+          toast.success('게시글이 공유되었습니다!', {
+            id: toastId,
+            description: '대시보드에서 확인하세요.',
+          });
+          const newId = created.promptId?.toString?.() || created.id?.toString?.() || '';
+          markShared(currentMessage.matchId);
+          onShareToDashboard?.(newId);
           return;
         }
         const result = await arenaApi.sharePrompt(Number(currentMessage.matchId), wallet);
         const sharedId = result.prompt?.id?.toString?.() || '';
+        toast.success('게시글이 공유되었습니다!', {
+          id: toastId,
+          description: '대시보드에서 확인하세요.',
+        });
+        markShared(currentMessage.matchId);
         onShareToDashboard?.(sharedId);
       } catch (err) {
         toast.error('게시글 공유 실패', {
+          id: toastId,
           description: err instanceof Error ? err.message : '다시 시도해주세요',
         });
         console.error('Failed to share prompt:', err);
@@ -409,7 +472,8 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
           size="icon"
           onClick={handleShare}
           className="mt-1 shrink-0"
-          title="게시글 작성하기"
+          title={currentMessage?.matchId && sharedPromptIds.has(currentMessage.matchId) ? '이미 공유된 대화입니다' : '게시글 작성하기'}
+          disabled={isLoading || !!(currentMessage?.matchId && sharedPromptIds.has(currentMessage.matchId))}
         >
           <Share2 className="w-4 h-4" />
         </Button>
@@ -498,41 +562,6 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
                 </ReactMarkdown>
               </div>
             )}
-          </div>
-        </Card>
-      </div>
-
-      {/* New Prompt Input */}
-      <div className="mt-8">
-        <Card className="p-4 border-2 border-gray-200 focus-within:border-[#0052FF] shadow-sm transition-all duration-200">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <Textarea
-              placeholder="다음 배틀을 시작하려면 새로운 질문을 입력하세요..."
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              className="flex-1 min-h-[50px] resize-none !border-none focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 !shadow-none"
-              disabled={isLoading}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                  handleSubmit();
-                }
-              }}
-            />
-            <Button 
-              className="px-8 h-auto sm:h-10 transition-all hover:scale-105 active:scale-95"
-              style={{ backgroundColor: '#0052FF' }}
-              onClick={() => handleSubmit()}
-              disabled={isLoading || !prompt.trim()}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Loading...
-                </>
-              ) : (
-                'Next Battle'
-              )}
-            </Button>
           </div>
         </Card>
       </div>

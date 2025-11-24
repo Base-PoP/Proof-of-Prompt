@@ -436,7 +436,10 @@ async function recordAuthorization(walletAddress: string, rawAuth: string) {
   // nonce 재사용 방지
   const exists = await prisma.paymentAuthorization.findUnique({ where: { nonce } });
   if (exists) {
-    throw new Error("Payment authorization already used");
+    if (exists.walletAddress?.toLowerCase() !== walletAddress.toLowerCase()) {
+      throw new Error("Payment authorization already used");
+    }
+    return;
   }
 
   await prisma.paymentAuthorization.create({
