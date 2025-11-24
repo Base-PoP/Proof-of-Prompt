@@ -2,6 +2,7 @@
 import { env } from './config';
 import { Category } from './constants';
 import { PromptItem, AchievementItem, PaymentRequiredPayload } from './types';
+import { x402Fetch, type X402PaymentPayload } from './x402-client';
 
 const API_BASE_URL = env.API_URL;
 
@@ -14,39 +15,72 @@ class ApiError extends Error {
 }
 
 export class PaymentRequiredError extends Error {
-  constructor(public payment: PaymentRequiredPayload) {
+  constructor(public payment: PaymentRequiredPayload | X402PaymentPayload) {
     super('Payment Required');
     this.name = 'PaymentRequiredError';
   }
 }
- 
-async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
+
+interface ApiFetchOptions extends RequestInit {
+  x402?: { address: string; provider: unknown };
+  skipX402?: boolean;
+}
+
+async function apiFetch<T>(endpoint: string, options?: ApiFetchOptions): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
+  
   try {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options?.headers ?? {}),
-      },
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new ApiError(response.status, `API Error: ${response.statusText} - ${errorText}`);
+    // x402 사용 여부 결정
+    const useX402 = !options?.skipX402 && (options?.x402 !== undefined);
+
+    if (useX402 && options?.x402) {
+      // x402 프로토콜 사용
+      return await x402Fetch<T>(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(options?.headers ?? {}),
+        },
+      }, 1);
+    } else {
+      // 기본 Fetch
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(options?.headers ?? {}),
+        },
+      });
+
+      if (response.status === 402) {
+        const data = await response.json() as { payment: X402PaymentPayload };
+        throw new PaymentRequiredError(data.payment);
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new ApiError(response.status, `API Error: ${response.statusText} - ${errorText}`);
+      }
+      return (await response.json()) as T;
     }
-    return (await response.json()) as T;
   } catch (e) {
-    if (e instanceof ApiError) throw e;
+    if (e instanceof ApiError || e instanceof PaymentRequiredError) throw e;
     throw new Error(`Network error: ${e instanceof Error ? e.message : 'Unknown error'}`);
   }
 }
 
 // ---------- Arena API ----------
 export const arenaApi = {
-  createChat: async (prompt: string, walletAddress?: string, userId?: string) =>
+  createChat: async (
+    prompt: string,
+    walletAddress?: string,
+    userId?: string,
+    x402Options?: { address: string; provider: unknown }
+  ) =>
     apiFetch<{ matchId: number; prompt: string; response: string }>('/arena/chat', {
       method: 'POST',
       body: JSON.stringify({ prompt, userId, walletAddress }),
+      x402: x402Options,
     }),
 
   createChatStream: async (
@@ -55,21 +89,29 @@ export const arenaApi = {
     onComplete: (matchId: number, prompt: string, fullResponse: string) => void,
     onError: (error: string) => void,
     paymentAuth?: string | null,
-    walletAddress?: string
+    walletAddress?: string,
+    x402Options?: { address: string; provider: unknown }
   ) => {
     try {
+      const headers: Record<string, string> = { 
+        'Content-Type': 'application/json',
+      };
+
+      // x402 서명 기반 권한 부여 (paymentAuth는 deprecated)
+      if (paymentAuth) {
+        headers['x-payment-authorization'] = paymentAuth;
+      }
+
+      // x402Options를 사용하면 자동으로 402 처리 (향후 스트리밍 지원)
       const response = await fetch(`${API_BASE_URL}/arena/chat/stream`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          ...(paymentAuth ? { 'x-payment-authorization': paymentAuth } : {}),
-        },
+        headers,
         body: JSON.stringify({ prompt, walletAddress }),
       });
 
       if (!response.ok) {
         if (response.status === 402) {
-          const data = await response.json().catch(() => ({}));
+          const data = await response.json() as { payment: X402PaymentPayload };
           throw new PaymentRequiredError(data.payment);
         }
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -87,11 +129,11 @@ export const arenaApi = {
         for (const line of chunk.split('\n')) {
           if (!line.startsWith('data: ')) continue;
           try {
-            const parsed = JSON.parse(line.slice(6));
-            if (parsed.type === 'start') {
+            const parsed = JSON.parse(line.slice(6)) as { type: string; matchId?: number; prompt?: string; content?: string; error?: string };
+            if (parsed.type === 'start' && parsed.matchId !== undefined) {
               matchId = parsed.matchId;
-              promptText = parsed.prompt;
-            } else if (parsed.type === 'chunk') {
+              promptText = parsed.prompt || prompt;
+            } else if (parsed.type === 'chunk' && parsed.content) {
               full += parsed.content;
               onChunk(parsed.content);
             } else if (parsed.type === 'done' && matchId !== null) {
@@ -99,7 +141,9 @@ export const arenaApi = {
             } else if (parsed.type === 'error') {
               onError(parsed.error || 'Unknown error');
             }
-          } catch {}
+          } catch {
+            // JSON 파싱 실패 무시
+          }
         }
       }
     } catch (e) {
@@ -110,7 +154,11 @@ export const arenaApi = {
     }
   },
 
-  sharePrompt: async (matchId: number, walletAddress?: string) =>
+  sharePrompt: async (
+    matchId: number,
+    walletAddress?: string,
+    x402Options?: { address: string; provider: unknown }
+  ) =>
     apiFetch<{
       ok: boolean;
       prompt: {
@@ -130,6 +178,7 @@ export const arenaApi = {
     }>('/arena/share', {
       method: 'POST',
       body: JSON.stringify({ matchId, walletAddress }),
+      x402: x402Options,
     }),
 };
 
@@ -197,7 +246,7 @@ export const promptsApi = {
     if (USE_MOCK_DATA) {
       const posts = localPostsStorage.getPosts();
       const likes = localPostsStorage.getLikes();
-      let filtered = category ? posts.filter(p => p.category === category) : posts;
+      const filtered = category ? posts.filter(p => p.category === category) : posts;
       if (sort === 'popular') {
         filtered.sort((a, b) => b.likes - a.likes);
       } else {

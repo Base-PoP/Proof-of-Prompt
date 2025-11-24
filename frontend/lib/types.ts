@@ -33,3 +33,23 @@ export interface PaymentRequiredPayload {
   amount: string;
   message?: string;
 }
+
+// x402 결제 프로토콜 타입
+export interface X402PaymentPayload {
+  chainId: number;
+  token: string;
+  pay_to_address: string;
+  amount: string;
+  price: string;
+  network: 'base' | 'base-sepolia';
+  description?: string;
+  timestamp: number;
+  facilitator_url?: string;
+}
+
+export interface X402AuthPayload {
+  payload: X402PaymentPayload;
+  signature: string;
+  address: string;
+  timestamp: number;
+}

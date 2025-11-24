@@ -4,6 +4,13 @@ import { prisma } from "../../lib/prisma";
 import { callFlockModel, callFlockModelStream } from "../../lib/flock";
 import { ALLOWED_CATEGORIES, normalizeCategory } from "../prompts/category";
 import { buildPaymentRequiredPayload, recordPaymentAuthorization, paymentConstants } from "../../lib/payment";
+import { 
+  verifyX402Signature, 
+  recordX402Payment, 
+  checkAndDeductTreasuryCost,
+  getTreasuryBalance,
+  type X402SignaturePayload 
+} from "../../lib/x402-verification";
 
 // -------- 채팅 생성 스키마 (단일 모델) --------
 const createChatSchema = z.object({
@@ -76,7 +83,7 @@ export const createChatHandler = async (req: Request, res: Response) => {
   }
 
   // ------------------------------------------------------------------
-  // [x402] Payment Check with simulated allowance (persisted in DB)
+  // [x402] Payment Check with Treasury integration
   // ------------------------------------------------------------------
   if (!paymentAuthorization) {
     return res.status(402).json({
@@ -86,9 +93,55 @@ export const createChatHandler = async (req: Request, res: Response) => {
   }
 
   try {
-    await recordPaymentAuthorization(walletAddress, paymentAuthorization);
+    // x402 서명 검증
+    let x402Payload: X402SignaturePayload;
+    try {
+      x402Payload = JSON.parse(paymentAuthorization);
+    } catch {
+      return res.status(400).json({ error: "Invalid payment authorization format" });
+    }
+
+    // 서명 검증
+    const isValidSignature = await verifyX402Signature(x402Payload);
+    if (!isValidSignature) {
+      return res.status(400).json({ error: "Invalid signature" });
+    }
+
+    // 주소 검증
+    if (x402Payload.address.toLowerCase() !== walletAddress.toLowerCase()) {
+      return res.status(400).json({ error: "Payment address mismatch" });
+    }
+
+    // Treasury 비용 확인 및 차감
+    const treasuryResult = await checkAndDeductTreasuryCost(
+      walletAddress,
+      x402Payload.payload.amount
+    );
+
+    if (!treasuryResult.success) {
+      return res.status(402).json({
+        error: "Insufficient Treasury balance",
+        details: treasuryResult.error
+      });
+    }
+
+    // 결제 기록
+    await recordX402Payment(
+      walletAddress,
+      x402Payload.payload.amount,
+      x402Payload.payload.price,
+      x402Payload.payload.network,
+      x402Payload.payload.description || "API usage"
+    );
+
+    console.log(`✅ [x402] Payment verified and recorded:`, {
+      user: walletAddress,
+      amount: x402Payload.payload.price,
+      txHash: treasuryResult.txHash
+    });
+
   } catch (err: any) {
-    return res.status(400).json({ error: err?.message || "Invalid payment authorization" });
+    return res.status(400).json({ error: err?.message || "Payment verification failed" });
   }
 
   try {
