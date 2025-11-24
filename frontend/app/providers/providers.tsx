@@ -1,9 +1,9 @@
 'use client';
 
-import { PrivyProvider } from '@privy-io/react-auth';
+import { PrivyProvider, type PrivyClientConfig } from '@privy-io/react-auth';
 import { WagmiProvider } from '@privy-io/wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
 import { http, createConfig } from 'wagmi';
 import { base, baseSepolia } from 'wagmi/chains';
 
@@ -11,7 +11,7 @@ import { base, baseSepolia } from 'wagmi/chains';
  * 애플리케이션 Provider 통합
  * Privy, Wagmi, React Query를 통합한 Provider 컴포넌트
  */
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({ children }: { children: ReactNode }) {
   // QueryClient 인스턴스 생성 (컴포넌트당 한 번만)
   const [queryClient] = useState(
     () =>
@@ -46,13 +46,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
         requireUserPasswordOnCreate: false,
         noPromptOnSignature: false,
       },
-      loginMethods: ['wallet', 'farcaster', 'email', 'google', 'twitter'] as any,
+      loginMethods: ['wallet', 'farcaster', 'email', 'google', 'twitter'] as const,
       appearance: {
         theme: 'light' as const,
         accentColor: '#0052FF' as `#${string}`,
         logo: 'https://www.base.org/favicon.png',
         showWalletLoginFirst: true,
-        walletList: ['metamask', 'coinbase_wallet'] as any,
+        walletList: ['metamask', 'coinbase_wallet'] as const,
         showWalletList: true,
       },
       supportedChains: [base, baseSepolia],
@@ -70,7 +70,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <PrivyProvider
       appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID || ''}
-      config={privyConfig as any}
+      config={privyConfig as PrivyClientConfig}
     >
       <QueryClientProvider client={queryClient}>
         <WagmiProvider config={wagmiConfig}>

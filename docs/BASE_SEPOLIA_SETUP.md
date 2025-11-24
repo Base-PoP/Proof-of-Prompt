@@ -115,7 +115,7 @@ return res.status(402).json({
   payment: {
     chainId: 84532, // Base Sepolia ✅
     token: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-    spender: "0xYourTreasuryAddress",
+    spender: "0x5e4D581D318ef0ff9e525529b40c3400457Fdbf6",
     amount: "100000", // 0.1 USDC
     message: "AI 모델 사용을 위해 0.1 USDC 승인이 필요합니다."
   }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Textarea } from './ui/textarea';
@@ -7,7 +7,6 @@ import { arenaApi, promptsApi } from '../../lib/api';
 import { env } from '../../lib/config';
 import { useAuth } from '../hooks/useAuth';
 import { usePayment } from '../hooks/usePayment';
-import { useSignMessage } from 'wagmi';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { toast } from 'sonner';
@@ -47,7 +46,7 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sharedPromptIds, setSharedPromptIds] = useState<Set<string>>(new Set());
-  const { pendingPayment, setPendingPayment, status: paymentStatus, setStatus: setPaymentStatus, paymentAuth, setPaymentAuth, lastAuth, setLastAuth, lastAuthAddress, signForPayment, handlePaymentError } = usePayment(userAddress || undefined);
+  const { pendingPayment, setPendingPayment, status: paymentStatus, setStatus: setPaymentStatus, paymentAuth, setPaymentAuth, lastAuth, setLastAuth, lastAuthAddress, approveForPayment, handlePaymentError } = usePayment(userAddress || undefined);
 
   // 로컬 저장소에 공유된 matchId 기록
   useEffect(() => {
@@ -161,6 +160,7 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
 
           setIsLoading(false);
           setPaymentAuth(null);
+          setPaymentPermit(null);
           setPendingPayment(null);
           setLastAuth((paymentAuth ?? authPayload ?? lastAuth) || null);
           setPaymentStatus('idle');
@@ -171,21 +171,21 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
           setIsLoading(false);
           setPaymentStatus('idle');
         },
-        authForRequest, // 서명 payload (직접 전달 우선, 이전 서명 재사용)
+        authForRequest, // legacy auth payload (not used)
         userAddress || undefined
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       const handled = handlePaymentError(err, currentPrompt, setPrompt, setCurrentMessage, setError, isPaymentRetry);
       if (handled) {
-        // 자동 서명 후 재시도 시도
+        // 자동 승인 후 재시도 시도
         if (userAddress && pendingPayment) {
           try {
             setPaymentStatus('authorizing');
-            const authPayload = await signForPayment(pendingPayment);
-            setPaymentAuth(authPayload);
-            setLastAuth(authPayload);
+            const approvalTx = await approveForPayment(pendingPayment);
+            setPaymentAuth(approvalTx); // dummy 저장
+            setLastAuth(approvalTx);
             setPendingPayment(null);
-            await handleSubmitWithPrompt(currentPrompt, true, authPayload);
+            await handleSubmitWithPrompt(currentPrompt, true, approvalTx);
             return;
           } catch (signErr) {
             console.error('Auto sign failed:', signErr);
@@ -209,11 +209,13 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
         }
       }
     }
-  }, [onChatCreated]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [approveForPayment, handlePaymentError, lastAuth, lastAuthAddress, paymentAuth, pendingPayment, requireAuth, setLastAuth, setPaymentAuth, setPaymentStatus, setPendingPayment, userAddress, onChatCreated]);
 
   // 기존 handleSubmit은 현재 prompt 상태를 사용
   const handleSubmit = useCallback(async () => {
     await handleSubmitWithPrompt(prompt, false, null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prompt, handleSubmitWithPrompt]);
 
   const handleApprove = async () => {
@@ -222,11 +224,11 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
     requireAuth(async () => {
       setPaymentStatus('authorizing');
       try {
-        const authPayload = await signForPayment(pendingPayment);
-        setPaymentAuth(authPayload);
-        setLastAuth(authPayload);
+        const approvalTx = await approveForPayment(pendingPayment);
+        setPaymentAuth(approvalTx);
+        setLastAuth(approvalTx);
         setPendingPayment(null);
-        await handleSubmitWithPrompt(pendingPayment.prompt, true, authPayload);
+        await handleSubmitWithPrompt(pendingPayment.prompt, true, approvalTx);
       } finally {
         setPaymentStatus('idle');
       }
@@ -294,6 +296,7 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
       toast.success('복사되었습니다!');
     } catch (err) {
       toast.error('복사에 실패했습니다');
+      console.error(err);
     }
   };
 
@@ -306,10 +309,11 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-sm max-w-3xl w-full flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
               <p className="font-semibold flex items-center gap-2">
-                💳 결제 서명 필요
+                💳 결제 승인 필요
               </p>
               <p className="mt-1 text-blue-600">
-                {pendingPayment.message || 'AI 모델 사용을 위해 서명만 진행하면 됩니다.'}
+                {pendingPayment.message || 'AI 모델 사용을 위해 승인만 진행하면 됩니다.'}
+                {pendingPayment.allowanceRequired && <span className="ml-1">(USDC 승인 부족)</span>}
               </p>
             </div>
           <Button 
@@ -320,10 +324,10 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
             {paymentStatus === 'authorizing' ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                서명 중...
+                승인 중...
               </>
             ) : (
-                '결제 서명하기'
+                '결제 승인하기'
               )}
             </Button>
           </div>
@@ -434,10 +438,11 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
         <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-sm flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
             <p className="font-semibold flex items-center gap-2">
-              💳 결제 서명 필요
+              💳 결제 승인 필요
             </p>
             <p className="mt-1 text-blue-600">
-              {pendingPayment.message || 'AI 모델 사용을 위해 서명만 진행하면 됩니다.'}
+              {pendingPayment.message || 'AI 모델 사용을 위해 승인만 진행하면 됩니다.'}
+              {pendingPayment.allowanceRequired && <span className="ml-1">(USDC 승인 부족)</span>}
             </p>
           </div>
           <Button 
@@ -448,10 +453,10 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
             {paymentStatus === 'authorizing' ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                서명 중...
+                승인 중...
               </>
             ) : (
-              '결제 서명하기'
+              '결제 승인하기'
             )}
           </Button>
         </div>
@@ -538,7 +543,7 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
                 <ReactMarkdown 
                   remarkPlugins={[remarkGfm]}
                   components={{
-                    code({ node, inline, className, children, ...props }: any) {
+                    code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: ReactNode }) {
                       const match = /language-(\w+)/.exec(className || '');
                       const language = match ? match[1] : '';
                       

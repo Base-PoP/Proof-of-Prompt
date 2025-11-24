@@ -3,14 +3,8 @@ import { z } from "zod";
 import { prisma } from "../../lib/prisma";
 import { callFlockModel, callFlockModelStream } from "../../lib/flock";
 import { ALLOWED_CATEGORIES, normalizeCategory } from "../prompts/category";
-import { buildPaymentRequiredPayload, recordPaymentAuthorization, paymentConstants } from "../../lib/payment";
-import { 
-  verifyX402Signature, 
-  recordX402Payment, 
-  checkAndDeductTreasuryCost,
-  getTreasuryBalance,
-  type X402SignaturePayload 
-} from "../../lib/x402-verification";
+import { buildPaymentRequiredPayload, recordPaymentAuthorization } from "../../lib/payment";
+import { chargePaymentTreasury, type PaymentPermit } from "../../lib/payment-treasury";
 
 // -------- 채팅 생성 스키마 (단일 모델) --------
 const createChatSchema = z.object({
@@ -26,8 +20,6 @@ const createPostSchema = z.object({
   walletAddress: z.string().optional(),
   tags: z.array(z.string()).optional()
 });
-
-const { COST_PER_CHAT, PAYMENT_TOKEN, PAY_TO_ADDRESS, CHAIN_ID } = paymentConstants;
 
 // -------- LLM을 이용한 제목·카테고리 자동 생성 --------
 async function generatePostMetadata(prompt: string, response: string): Promise<{ title: string; category: string }> {
@@ -76,72 +68,46 @@ export const createChatHandler = async (req: Request, res: Response) => {
   }
 
   const { prompt, userId, walletAddress } = parsed.data;
-  const paymentAuthorization = req.headers['x-payment-authorization'] as string | undefined;
+  const permitHeader = req.headers['x-payment-permit'] as string | undefined;
+  let permit: PaymentPermit | undefined;
+  if (permitHeader) {
+    try {
+      const parsedPermit = JSON.parse(permitHeader);
+      permit = {
+        deadline: BigInt(parsedPermit.deadline),
+        v: parsedPermit.v,
+        r: parsedPermit.r,
+        s: parsedPermit.s,
+      };
+    } catch (err) {
+      return res.status(400).json({ error: "Invalid payment permit format" });
+    }
+  }
 
   if (!walletAddress) {
     return res.status(400).json({ error: "walletAddress is required for payment" });
   }
 
   // ------------------------------------------------------------------
-  // [x402] Payment Check with Treasury integration
+  // 결제: PaymentTreasury에서 pricePerChat 만큼 자동 차감
   // ------------------------------------------------------------------
-  if (!paymentAuthorization) {
+  const paymentPayload = await buildPaymentRequiredPayload();
+  try {
+    const { txHash, amount } = await chargePaymentTreasury(walletAddress, permit);
+    await recordPaymentAuthorization(walletAddress, {
+      nonce: txHash,
+      amount: amount.toString(),
+      timestamp: Date.now(),
+    });
+  } catch (err: any) {
+    console.error("❌ [PAYMENT FAILED]", err);
+    const code = err?.code;
     return res.status(402).json({
       error: "Payment Required",
-      payment: buildPaymentRequiredPayload()
+      reason: err?.shortMessage || err?.message || "Payment failed",
+      allowanceRequired: code === "ALLOWANCE_REQUIRED",
+      payment: paymentPayload
     });
-  }
-
-  try {
-    // x402 서명 검증
-    let x402Payload: X402SignaturePayload;
-    try {
-      x402Payload = JSON.parse(paymentAuthorization);
-    } catch {
-      return res.status(400).json({ error: "Invalid payment authorization format" });
-    }
-
-    // 서명 검증
-    const isValidSignature = await verifyX402Signature(x402Payload);
-    if (!isValidSignature) {
-      return res.status(400).json({ error: "Invalid signature" });
-    }
-
-    // 주소 검증
-    if (x402Payload.address.toLowerCase() !== walletAddress.toLowerCase()) {
-      return res.status(400).json({ error: "Payment address mismatch" });
-    }
-
-    // Treasury 비용 확인 및 차감
-    const treasuryResult = await checkAndDeductTreasuryCost(
-      walletAddress,
-      x402Payload.payload.amount
-    );
-
-    if (!treasuryResult.success) {
-      return res.status(402).json({
-        error: "Insufficient Treasury balance",
-        details: treasuryResult.error
-      });
-    }
-
-    // 결제 기록
-    await recordX402Payment(
-      walletAddress,
-      x402Payload.payload.amount,
-      x402Payload.payload.price,
-      x402Payload.payload.network,
-      x402Payload.payload.description || "API usage"
-    );
-
-    console.log(`✅ [x402] Payment verified and recorded:`, {
-      user: walletAddress,
-      amount: x402Payload.payload.price,
-      txHash: treasuryResult.txHash
-    });
-
-  } catch (err: any) {
-    return res.status(400).json({ error: err?.message || "Payment verification failed" });
   }
 
   try {
@@ -224,32 +190,46 @@ export const createChatStreamHandler = async (req: Request, res: Response) => {
   }
 
   const { prompt, userId, walletAddress } = parsed.data;
-  const paymentAuthorization = req.headers['x-payment-authorization'] as string | undefined;
+  const permitHeader = req.headers['x-payment-permit'] as string | undefined;
+  let permit: PaymentPermit | undefined;
+  if (permitHeader) {
+    try {
+      const parsedPermit = JSON.parse(permitHeader);
+      permit = {
+        deadline: BigInt(parsedPermit.deadline),
+        v: parsedPermit.v,
+        r: parsedPermit.r,
+        s: parsedPermit.s,
+      };
+    } catch (err) {
+      return res.status(400).json({ error: "Invalid payment permit format" });
+    }
+  }
 
   if (!walletAddress) {
     return res.status(400).json({ error: "walletAddress is required for payment" });
   }
 
   // ------------------------------------------------------------------
-  // [x402] Payment Check (Stream)
+  // 결제: PaymentTreasury에서 pricePerChat 만큼 자동 차감
   // ------------------------------------------------------------------
-  if (!paymentAuthorization) {
+  const paymentPayload = await buildPaymentRequiredPayload();
+  try {
+    const { txHash, amount } = await chargePaymentTreasury(walletAddress, permit);
+    await recordPaymentAuthorization(walletAddress, {
+      nonce: txHash,
+      amount: amount.toString(),
+      timestamp: Date.now(),
+    });
+  } catch (err: any) {
+    console.error("❌ [PAYMENT FAILED - STREAM]", err);
+    const code = err?.code;
     return res.status(402).json({
       error: "Payment Required",
-      payment: {
-        chainId: CHAIN_ID, // Base Sepolia Testnet
-        token: PAYMENT_TOKEN,
-        pay_to_address: PAY_TO_ADDRESS, // Treasury placeholder
-        amount: COST_PER_CHAT.toString(), // 0.1 USDC per chat
-        message: "결제용 서명(authorization)이 필요합니다. 지갑에서 서명 후 다시 요청하세요."
-      }
+      reason: err?.shortMessage || err?.message || "Payment failed",
+      allowanceRequired: code === "ALLOWANCE_REQUIRED",
+      payment: paymentPayload
     });
-  }
-
-  try {
-    await recordPaymentAuthorization(walletAddress, paymentAuthorization);
-  } catch (err: any) {
-    return res.status(400).json({ error: err?.message || "Invalid payment authorization" });
   }
 
   try {

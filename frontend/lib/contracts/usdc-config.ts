@@ -25,5 +25,35 @@ export const USDC_ABI = [
     outputs: [{ name: '', type: 'string' }],
     type: 'function',
   },
+  {
+    constant: false,
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'value', type: 'uint256' },
+    ],
+    name: 'approve',
+    outputs: [{ name: '', type: 'bool' }],
+    type: 'function',
+  },
+  {
+    constant: true,
+    inputs: [],
+    name: 'name',
+    outputs: [{ name: '', type: 'string' }],
+    type: 'function',
+  },
+  {
+    constant: true,
+    inputs: [{ name: 'owner', type: 'address' }],
+    name: 'nonces',
+    outputs: [{ name: '', type: 'uint256' }],
+    type: 'function',
+  },
+  {
+    constant: true,
+    inputs: [],
+    name: 'version',
+    outputs: [{ name: '', type: 'string' }],
+    type: 'function',
+  },
 ] as const;
-

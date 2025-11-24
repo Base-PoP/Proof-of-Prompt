@@ -14,7 +14,7 @@ X402_NETWORK=base-sepolia
 X402_CHAT_PRICE=$0.01
 X402_CHAT_STREAM_PRICE=$0.01
 X402_FACILITATOR_URL=https://x402.org/facilitator
-PAY_TO_ADDRESS=0x0000000000000000000000000000000000000000  # TODO: Treasury 주소로 변경
+PAY_TO_ADDRESS=0x5e4D581D318ef0ff9e525529b40c3400457Fdbf6  # PaymentTreasury (Base Sepolia)
 ```
 
 ### 프론트엔드 (frontend/env.local)
@@ -148,7 +148,7 @@ Chat response: { matchId: 123, prompt: "...", response: "..." }
 
 2. **컨트랙트 주소 업데이트**
    ```env
-   PAY_TO_ADDRESS=0x<deployed_contract_address>
+   PAY_TO_ADDRESS=0x5e4D581D318ef0ff9e525529b40c3400457Fdbf6
    ```
 
 3. **USDC 승인** (UI에서)

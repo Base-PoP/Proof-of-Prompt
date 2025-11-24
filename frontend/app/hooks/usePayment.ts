@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { useSignMessage } from 'wagmi';
+import { useWalletClient, usePublicClient } from 'wagmi';
+import { maxUint256 } from 'viem';
 import { PaymentRequiredError } from '../../lib/api';
+import { USDC_ADDRESS, USDC_ABI } from '../../lib/contracts/usdc-config';
 
 export type PaymentStatus = 'idle' | 'requires_signature' | 'authorizing' | 'processing';
+
+type SetMessageFn = (v: { prompt: string; response: string; matchId?: string } | null) => void;
 
 export interface PaymentState {
   pendingPayment: {
@@ -11,6 +15,8 @@ export interface PaymentState {
     amount: string;
     message?: string;
     prompt?: string;
+    allowanceRequired?: boolean;
+    reason?: string;
   } | null;
   paymentAuth: string | null;
   lastAuth: string | null;
@@ -20,8 +26,15 @@ export interface PaymentState {
   setPendingPayment: (p: PaymentState['pendingPayment']) => void;
   setPaymentAuth: (v: string | null) => void;
   setLastAuth: (v: string | null) => void;
-  signForPayment: (payment: PaymentState['pendingPayment']) => Promise<string>;
-  handlePaymentError: (err: any, prompt: string, setPrompt: (v: string) => void, setCurrentMessage: (v: any) => void, setError: (v: string | null) => void, isPaymentRetry: boolean) => boolean;
+  approveForPayment: (payment: PaymentState['pendingPayment']) => Promise<string>;
+  handlePaymentError: (
+    err: unknown,
+    prompt: string,
+    setPrompt: (v: string) => void,
+    setCurrentMessage: SetMessageFn,
+    setError: (v: string | null) => void,
+    isPaymentRetry: boolean
+  ) => boolean;
 }
 
 export function usePayment(currentAddress?: string): PaymentState {
@@ -45,7 +58,8 @@ export function usePayment(currentAddress?: string): PaymentState {
   const [lastAuth, setLastAuthState] = useState<string | null>(loadStoredAuth()?.auth ?? null);
   const [lastAuthAddress, setLastAuthAddress] = useState<string | null>(loadStoredAuth()?.address ?? null);
   const [status, setStatus] = useState<PaymentStatus>('idle');
-  const { signMessageAsync } = useSignMessage();
+  const { data: walletClient } = useWalletClient();
+  const publicClient = usePublicClient();
   const prevAddressRef = useRef<string | undefined>(currentAddress);
 
   // 지갑 주소가 바뀌면 저장된 서명 무효화
@@ -81,23 +95,50 @@ export function usePayment(currentAddress?: string): PaymentState {
     }
   };
 
-  const signForPayment = async (payment: PaymentState['pendingPayment']) => {
-    const nonce = `auth-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const message = `Pay ${payment?.amount} to ${payment?.pay_to_address || 'treasury'} at ${new Date().toISOString()} :: ${nonce}`;
-    const signature = await signMessageAsync({ message });
-    return JSON.stringify({ nonce, signature, message });
+  const approveForPayment = async (payment: PaymentState['pendingPayment']) => {
+    if (!walletClient) throw new Error('Wallet not connected');
+    if (!publicClient) throw new Error('RPC client unavailable');
+    if (!payment?.pay_to_address) throw new Error('pay_to_address missing');
+
+    const txHash = await walletClient.writeContract({
+      address: (payment.token || USDC_ADDRESS) as `0x${string}`,
+      abi: [
+        ...USDC_ABI,
+        {
+          name: 'approve',
+          type: 'function',
+          stateMutability: 'nonpayable',
+          inputs: [
+            { name: 'spender', type: 'address' },
+            { name: 'amount', type: 'uint256' },
+          ],
+          outputs: [{ name: 'success', type: 'bool' }],
+        },
+      ] as const,
+      functionName: 'approve',
+      args: [payment.pay_to_address as `0x${string}`, maxUint256],
+    });
+
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    // 승인 후 별도 토큰은 저장하지 않지만, 결제 재시도를 트리거하기 위해 dummy auth 반환
+    return txHash;
   };
 
   const handlePaymentError = (
-    err: any,
+    err: unknown,
     prompt: string,
     setPrompt: (v: string) => void,
-    setCurrentMessage: (v: any) => void,
+    setCurrentMessage: SetMessageFn,
     setError: (v: string | null) => void,
     isPaymentRetry: boolean
   ) => {
-    if (err instanceof PaymentRequiredError || err?.name === 'PaymentRequiredError') {
-      setPendingPayment({ ...err.payment, prompt });
+    const paymentErr = err as { name?: string; payment?: PaymentState['pendingPayment']; allowanceRequired?: boolean; reason?: string };
+    if (err instanceof PaymentRequiredError || paymentErr?.name === 'PaymentRequiredError') {
+      const allowanceRequired = paymentErr?.allowanceRequired;
+      const reason = paymentErr?.reason;
+      if (paymentErr.payment) {
+        setPendingPayment({ ...paymentErr.payment, prompt, allowanceRequired, reason });
+      }
       setPaymentAuth(null);
       setError(null);
       setStatus('requires_signature');
@@ -120,7 +161,7 @@ export function usePayment(currentAddress?: string): PaymentState {
     setPendingPayment,
     setPaymentAuth,
     setLastAuth,
-    signForPayment,
+    approveForPayment,
     handlePaymentError,
   };
 }

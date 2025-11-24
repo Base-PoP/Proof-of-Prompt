@@ -3,7 +3,6 @@
 import { useWallet } from '@/app/hooks/use-wallet';
 import { useBalance } from 'wagmi';
 import { Wallet } from 'lucide-react';
-import { formatEther } from 'viem';
 import { useEffect, useState } from 'react';
 
 import { USDC_ADDRESS } from '@/lib/contracts/usdc-config';

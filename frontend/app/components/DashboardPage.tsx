@@ -47,12 +47,11 @@ const categoryChipClass = (active: boolean) =>
       : 'bg-white text-[#1f3b66] border-[#d7e3f7] hover:bg-[#eef3ff]'
   }`;
 
-export function DashboardPage({ onNewChat, onSelectPost, draftPost, onPostCreated }: DashboardPageProps) {
+export function DashboardPage({ onSelectPost, draftPost, onPostCreated }: DashboardPageProps) {
   const { requireAuth, userAddress } = useAuth();
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [isSharing, setIsSharing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [sortBy, setSortBy] = useState<'latest' | 'popular'>('latest');
@@ -91,6 +90,7 @@ export function DashboardPage({ onNewChat, onSelectPost, draftPost, onPostCreate
   useEffect(() => {
     // 필터/정렬 변경 시 목록을 초기 로드
     loadPrompts(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortBy, selectedCategory, userAddress]);
 
   useEffect(() => {
@@ -99,18 +99,18 @@ export function DashboardPage({ onNewChat, onSelectPost, draftPost, onPostCreate
       handleAutoShare();
       lastSharedMatchIdRef.current = draftPost.matchId;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftPost, userAddress]);
 
   const handleAutoShare = async () => {
     if (!draftPost) return;
 
-    setIsSharing(true);
     const toastId = toast.loading('게시글을 공유하고 있습니다...');
 
     try {
       if (env.USE_MOCK_DATA) {
         // 테스트 모드: 로컬 스토리지에 바로 저장
-        const created = await promptsApi.sharePrompt(
+        await promptsApi.sharePrompt(
           draftPost.prompt,
           draftPost.response,
           userAddress || undefined,
@@ -161,8 +161,6 @@ export function DashboardPage({ onNewChat, onSelectPost, draftPost, onPostCreate
         description: err instanceof Error ? err.message : '다시 시도해주세요',
       });
       console.error('Failed to create post:', err);
-    } finally {
-      setIsSharing(false);
     }
   };
 

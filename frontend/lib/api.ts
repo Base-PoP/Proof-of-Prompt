@@ -15,15 +15,17 @@ class ApiError extends Error {
 }
 
 export class PaymentRequiredError extends Error {
-  constructor(public payment: PaymentRequiredPayload | X402PaymentPayload) {
+  constructor(
+    public payment: PaymentRequiredPayload | X402PaymentPayload,
+    public reason?: string,
+    public allowanceRequired?: boolean
+  ) {
     super('Payment Required');
     this.name = 'PaymentRequiredError';
   }
 }
 
 interface ApiFetchOptions extends RequestInit {
-  x402?: { address: string; provider: unknown };
-  skipX402?: boolean;
 }
 
 async function apiFetch<T>(endpoint: string, options?: ApiFetchOptions): Promise<T> {
@@ -53,8 +55,8 @@ async function apiFetch<T>(endpoint: string, options?: ApiFetchOptions): Promise
       });
 
       if (response.status === 402) {
-        const data = await response.json() as { payment: X402PaymentPayload };
-        throw new PaymentRequiredError(data.payment);
+        const data = await response.json() as { payment: PaymentRequiredPayload; reason?: string; allowanceRequired?: boolean };
+        throw new PaymentRequiredError(data.payment, data.reason, data.allowanceRequired);
       }
 
       if (!response.ok) {
@@ -75,12 +77,10 @@ export const arenaApi = {
     prompt: string,
     walletAddress?: string,
     userId?: string,
-    x402Options?: { address: string; provider: unknown }
   ) =>
     apiFetch<{ matchId: number; prompt: string; response: string }>('/arena/chat', {
       method: 'POST',
       body: JSON.stringify({ prompt, userId, walletAddress }),
-      x402: x402Options,
     }),
 
   createChatStream: async (
@@ -90,14 +90,11 @@ export const arenaApi = {
     onError: (error: string) => void,
     paymentAuth?: string | null,
     walletAddress?: string,
-    x402Options?: { address: string; provider: unknown }
   ) => {
     try {
       const headers: Record<string, string> = { 
         'Content-Type': 'application/json',
       };
-
-      // x402 서명 기반 권한 부여 (paymentAuth는 deprecated)
       if (paymentAuth) {
         headers['x-payment-authorization'] = paymentAuth;
       }
@@ -111,8 +108,8 @@ export const arenaApi = {
 
       if (!response.ok) {
         if (response.status === 402) {
-          const data = await response.json() as { payment: X402PaymentPayload };
-          throw new PaymentRequiredError(data.payment);
+          const data = await response.json() as { payment: PaymentRequiredPayload; reason?: string; allowanceRequired?: boolean };
+          throw new PaymentRequiredError(data.payment, data.reason, data.allowanceRequired);
         }
         throw new Error(`HTTP error! status: ${response.status}`);
       }

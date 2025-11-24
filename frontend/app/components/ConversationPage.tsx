@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Input } from "./ui/input";
@@ -56,6 +56,7 @@ export function ConversationPage({ postId, onBack }: ConversationPageProps) {
 
   useEffect(() => {
     loadPost();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId]);
 
   useEffect(() => {
@@ -407,7 +408,7 @@ export function ConversationPage({ postId, onBack }: ConversationPageProps) {
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
-                code({ node, inline, className, children, ...props }: any) {
+                code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: ReactNode }) {
                   const match = /language-(\w+)/.exec(className || "");
                   const language = match ? match[1] : "";
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { usePrivy } from '@privy-io/react-auth';
 import { useAccount } from 'wagmi';
 import { Button } from './ui/button';
 import { useWalletStore } from '@/app/store/wallet-store';
@@ -22,7 +22,6 @@ import { Copy, Check } from 'lucide-react';
  */
 export function WalletButton() {
   const { login, logout, ready, authenticated, user } = usePrivy();
-  const { wallets } = useWallets();
   const { address, chain } = useAccount();
   
   const {

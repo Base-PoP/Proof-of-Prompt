@@ -11,6 +11,6 @@ export const env = {
   chainId: process.env.CHAIN_ID ?? "84532",
   rpcUrl: process.env.RPC_URL ?? "",
   usdcAddress: process.env.USDC_ADDRESS ?? "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-  payToAddress: process.env.PAY_TO_ADDRESS ?? "0x0000000000000000000000000000000000000000",
+  payToAddress: process.env.PAY_TO_ADDRESS ?? "0x5e4D581D318ef0ff9e525529b40c3400457Fdbf6",
   facilitatorKey: process.env.FACILITATOR_PRIVATE_KEY ?? ""
 };

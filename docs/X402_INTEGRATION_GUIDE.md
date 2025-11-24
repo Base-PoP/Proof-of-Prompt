@@ -104,7 +104,7 @@ X402_CHAT_STREAM_PRICE=$0.01
 X402_FACILITATOR_URL=https://x402.org/facilitator
 
 # 결제 수신 주소 (Treasury/PaymentRouter)
-PAY_TO_ADDRESS=0x...
+PAY_TO_ADDRESS=0x5e4D581D318ef0ff9e525529b40c3400457Fdbf6
 
 # 기타
 CHAIN_ID=84532
@@ -294,7 +294,7 @@ X402_ENABLED=false npm run dev
    ```env
    X402_ENABLED=true
    X402_NETWORK=base-sepolia
-   PAY_TO_ADDRESS=<deployed_contract_address>
+   PAY_TO_ADDRESS=0x5e4D581D318ef0ff9e525529b40c3400457Fdbf6
    ```
 
 3. **프론트엔드 테스트**:

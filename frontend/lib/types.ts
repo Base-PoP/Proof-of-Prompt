@@ -32,6 +32,8 @@ export interface PaymentRequiredPayload {
   pay_to_address: string;
   amount: string;
   message?: string;
+  allowanceRequired?: boolean;
+  reason?: string;
 }
 
 // x402 결제 프로토콜 타입

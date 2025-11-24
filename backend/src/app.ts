@@ -43,7 +43,7 @@ export const createApp = (enableX402: boolean = true) => {
 
     const arenaRouterWithX402 = createArenaRouter({
       endpointConfigs: x402EndpointConfigs,
-      payToAddress: process.env.PAY_TO_ADDRESS || '0x0000000000000000000000000000000000000000',
+      payToAddress: process.env.PAY_TO_ADDRESS || '0x5e4D581D318ef0ff9e525529b40c3400457Fdbf6',
       facilitatorUrl: process.env.X402_FACILITATOR_URL || 'https://x402.org/facilitator',
     });
 

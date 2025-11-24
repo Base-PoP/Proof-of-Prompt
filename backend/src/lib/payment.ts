@@ -1,9 +1,10 @@
 import { prisma } from './prisma';
 import { ethers } from 'ethers';
+import { fetchPricePerChat } from './payment-treasury';
 
 const COST_PER_CHAT = 100000; // 0.1 USDC (6 decimals)
 const PAYMENT_TOKEN = process.env.USDC_ADDRESS || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
-const PAY_TO_ADDRESS = process.env.PAY_TO_ADDRESS || '0x0000000000000000000000000000000000000000';
+const PAY_TO_ADDRESS = process.env.PAY_TO_ADDRESS || '0x5e4D581D318ef0ff9e525529b40c3400457Fdbf6';
 const TREASURY_POOL_ADDRESS = process.env.TREASURY_POOL_ADDRESS || '';
 const TREASURY_POOL_RPC_URL = process.env.TREASURY_POOL_RPC_URL || 'https://sepolia.base.org';
 const CHAIN_ID = Number(process.env.CHAIN_ID || '84532');
@@ -20,12 +21,19 @@ const TREASURY_POOL_ABI = [
   'function receivePayment(address payer, uint256 amount) public',
 ];
 
-export function buildPaymentRequiredPayload() {
+export async function buildPaymentRequiredPayload() {
+  let amount = BigInt(COST_PER_CHAT);
+  try {
+    amount = await fetchPricePerChat();
+  } catch (err) {
+    console.warn('[payment] pricePerChat 조회 실패, 기본값 사용:', err);
+  }
+
   return {
     chainId: CHAIN_ID,
     token: PAYMENT_TOKEN,
     pay_to_address: PAY_TO_ADDRESS,
-    amount: COST_PER_CHAT.toString(),
+    amount: amount.toString(),
     message: '결제용 서명(authorization)이 필요합니다. 지갑에서 서명 후 다시 요청하세요.',
   };
 }

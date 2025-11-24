@@ -12,16 +12,6 @@ import { ProfilePage } from './components/ProfilePage';
 
 type Page = 'home' | 'dashboard' | 'conversation' | 'leaderboard' | 'profile';
 
-interface Problem {
-  id: string;
-  title: string;
-  description: string;
-  difficulty: 'easy' | 'medium' | 'hard';
-  category: string;
-  votes: number;
-  createdAt: string;
-}
-
 interface ChatHistoryItem {
   id: string;
   matchId: string;
@@ -37,8 +27,6 @@ export default function Home() {
   // 페이지 상태를 localStorage에서 복원
   const [currentPage, setCurrentPage] = useState<Page>('home');
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [selectedProblem, setSelectedProblem] = useState<Problem | null>(null);
-  const [directPrompt, setDirectPrompt] = useState<string>('');
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
@@ -134,8 +122,6 @@ export default function Home() {
 
   const handleNewChat = () => {
     setCurrentPage('home');
-    setSelectedProblem(null);
-    setDirectPrompt('');
     setSelectedPostId(null);
     setActiveChatId(null);
     setDraftPost(null); // Clear draft post
@@ -146,16 +132,6 @@ export default function Home() {
       localStorage.removeItem('selectedPostId');
       localStorage.removeItem('activeChatId');
     }
-  };
-
-  const handleStartBattle = (prompt: string) => {
-    setDirectPrompt(prompt);
-    setCurrentPage('dashboard');
-  };
-
-  const handleSelectProblem = (problem: Problem) => {
-    setSelectedProblem(problem);
-    setCurrentPage('dashboard');
   };
 
   const handleSelectPost = (postId: string) => {
@@ -191,7 +167,7 @@ export default function Home() {
       case 'home':
         return (
           <HomePage 
-            onStartBattle={handleStartBattle} 
+            onStartBattle={handleNewChat} 
             onBack={handleNewChat} 
             initialChatId={activeChatId}
             onChatCreated={addChatToHistory}
@@ -213,7 +189,7 @@ export default function Home() {
       case 'profile':
         return <ProfilePage />;
       default:
-        return <HomePage onStartBattle={handleStartBattle} onBack={handleNewChat} />;
+        return <HomePage onStartBattle={handleNewChat} onBack={handleNewChat} />;
     }
   };
 
