@@ -256,13 +256,7 @@ export function DashboardPage({ onSelectPost, draftPost, onPostCreated }: Dashbo
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-4">
       {/* Weekly reward countdown */}
-      <Card className="p-4 flex items-center gap-3 border-2 border-blue-100 bg-blue-50">
-        <Clock className="w-5 h-5 text-blue-600" />
-        <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2 w-full justify-between">
-          <div className="text-sm text-blue-800">주간 보상 분배까지 남은 시간</div>
-          <div className="font-semibold text-lg text-blue-900">{formatCountdown(countdown)}</div>
-        </div>
-      </Card>
+   
 
       {/* Test Mode Banner */}
       {env.USE_MOCK_DATA && (

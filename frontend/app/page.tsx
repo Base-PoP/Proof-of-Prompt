@@ -31,6 +31,7 @@ export default function Home() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
   const [draftPost, setDraftPost] = useState<{ matchId: string; prompt: string; response: string } | null>(null);
+  const [selectedChat, setSelectedChat] = useState<ChatHistoryItem | null>(null);
   const [homeResetKey, setHomeResetKey] = useState(0);
 
   // 초기 마운트 시 localStorage에서 상태 복원
@@ -108,8 +109,12 @@ export default function Home() {
 
   // 채팅 선택 핸들러
   const handleSelectChat = (chatId: string) => {
-    setActiveChatId(chatId);
-    setCurrentPage('home');
+    const chat = chatHistory.find((c) => c.id === chatId) || null;
+    setSelectedChat(chat);
+    setActiveChatId(chatId); // UI highlight uses history id
+    setSelectedPostId(chat?.matchId ?? null); // conversation fetch uses matchId
+    setDraftPost(null);
+    setCurrentPage('conversation');
   };
 
   // 채팅 삭제 핸들러
@@ -125,6 +130,7 @@ export default function Home() {
     setSelectedPostId(null);
     setActiveChatId(null);
     setDraftPost(null); // Clear draft post
+    setSelectedChat(null);
     setHomeResetKey(prev => prev + 1);
     // localStorage 정리
     if (typeof window !== 'undefined') {
@@ -166,10 +172,11 @@ export default function Home() {
     switch (currentPage) {
       case 'home':
         return (
-          <HomePage 
+          <HomePage
             onStartBattle={handleNewChat} 
             onBack={handleNewChat} 
             initialChatId={activeChatId}
+            initialChat={selectedChat}
             onChatCreated={addChatToHistory}
             chatHistory={chatHistory}
             onShareToDashboard={handleShareToDashboard}
@@ -179,10 +186,8 @@ export default function Home() {
       case 'dashboard':
         return <DashboardPage onNewChat={handleNewChat} onSelectPost={handleSelectPost} draftPost={draftPost} onPostCreated={handlePostCreated} />;
       case 'conversation':
-        return selectedPostId ? (
-          <ConversationPage postId={selectedPostId} onBack={handleBackFromConversation} />
-        ) : (
-          <DashboardPage onNewChat={handleNewChat} onSelectPost={handleSelectPost} />
+        return (
+          <ConversationPage postId={selectedPostId || activeChatId || ""} onBack={handleBackFromConversation} />
         );
       case 'leaderboard':
         return <LeaderboardPage onSelectPost={handleSelectPost} />;
@@ -239,7 +244,7 @@ export default function Home() {
                   letterSpacing: '-0.02em' 
                 }}
               >
-                LM Battle
+                 Proof-of-Prompt 
               </span>
             </button>
             <div className="flex-1 lg:flex-none" />
@@ -255,6 +260,7 @@ export default function Home() {
           {renderPage()}
         </main>
       </div>
+
     </div>
   );
 }

@@ -59,7 +59,5 @@ export function startWeeklyRewardJob() {
     }
   };
 
-  // kick off immediately for testing
-  tick();
   setInterval(tick, intervalMs);
 }

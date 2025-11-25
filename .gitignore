@@ -1,4 +1,4 @@
-# LM Battle Project - Root .gitignore
+#  Proof-of-Prompt  Project - Root .gitignore
 
 # Dependencies
 **/node_modules/

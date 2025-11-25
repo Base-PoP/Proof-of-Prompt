@@ -301,7 +301,7 @@ npm run dev
 
 ### 3. 클라이언트 서명
 ```typescript
-const message = "I authorize payment for $0.01 USD (10000 0xA449bc...) to 0x[TreasuryPool] on base-sepolia chain for: LM Battle: 1 prompt answer"
+const message = "I authorize payment for $0.01 USD (10000 0xA449bc...) to 0x[TreasuryPool] on base-sepolia chain for:  Proof-of-Prompt : 1 prompt answer"
 const signature = await signer.signMessage(message)
 ```
 

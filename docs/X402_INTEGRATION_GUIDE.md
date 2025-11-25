@@ -134,12 +134,12 @@ const x402EndpointConfigs: X402EndpointConfig = {
   '/chat': {
     price: '$0.01',
     network: 'base-sepolia',
-    description: 'LM Battle: 1 prompt answer',
+    description: ' Proof-of-Prompt : 1 prompt answer',
   },
   '/chat/stream': {
     price: '$0.01',
     network: 'base-sepolia',
-    description: 'LM Battle: 1 streaming prompt answer',
+    description: ' Proof-of-Prompt : 1 streaming prompt answer',
   }
 };
 
@@ -222,7 +222,7 @@ function ChatComponent() {
        "amount": "10000",
        "price": "$0.01",
        "network": "base-sepolia",
-       "description": "LM Battle: 1 prompt answer",
+       "description": " Proof-of-Prompt : 1 prompt answer",
        "timestamp": 1700000000000
      }
    }

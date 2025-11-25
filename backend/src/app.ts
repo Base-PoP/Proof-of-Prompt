@@ -31,13 +31,13 @@ export const createApp = (enableX402: boolean = true) => {
       '/chat': {
         price: process.env.X402_CHAT_PRICE || '$0.01',
         network: (process.env.X402_NETWORK as 'base' | 'base-sepolia') || 'base-sepolia',
-        description: 'LM Battle: 1 prompt answer',
+        description: ' Proof-of-Prompt : 1 prompt answer',
         currency: 'USDC'
       },
       '/chat/stream': {
         price: process.env.X402_CHAT_STREAM_PRICE || '$0.01',
         network: (process.env.X402_NETWORK as 'base' | 'base-sepolia') || 'base-sepolia',
-        description: 'LM Battle: 1 streaming prompt answer',
+        description: ' Proof-of-Prompt : 1 streaming prompt answer',
         currency: 'USDC'
       }
     };

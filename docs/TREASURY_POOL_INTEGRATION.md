@@ -166,7 +166,7 @@ HTTP 402 Payment Required
     "amount": "10000",          // 0.01 USDC (wei)
     "price": "$0.01",
     "network": "base-sepolia",
-    "description": "LM Battle: 1 prompt answer"
+    "description": " Proof-of-Prompt : 1 prompt answer"
   }
 }
 ```
@@ -175,7 +175,7 @@ HTTP 402 Payment Required
 
 ```typescript
 // frontend/lib/x402-client.ts
-const message = "I authorize payment for $0.01 USD (10000 0x...) to 0x... on base-sepolia chain for: LM Battle: 1 prompt answer";
+const message = "I authorize payment for $0.01 USD (10000 0x...) to 0x... on base-sepolia chain for:  Proof-of-Prompt : 1 prompt answer";
 const signature = await signer.signMessage(message);
 ```
 

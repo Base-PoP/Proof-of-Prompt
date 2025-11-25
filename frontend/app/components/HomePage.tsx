@@ -11,6 +11,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { toast } from 'sonner';
 import { CodeBlock } from './CodeBlock';
+const AUTH_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 interface ChatMessage {
   matchId?: string;
@@ -33,13 +34,14 @@ interface HomePageProps {
   onStartBattle?: (prompt: string) => void;
   onBack?: () => void;
   initialChatId?: string | null;
+  initialChat?: { prompt: string; response: string; matchId?: string } | null;
   onChatCreated?: (matchId: string, prompt: string, response: string) => void;
   chatHistory?: ChatHistoryItem[];
   onShareToDashboard?: (sharedPromptId: string) => void;
   resetKey?: number;
 }
 
-export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [], onShareToDashboard, resetKey }: HomePageProps) {
+export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, chatHistory = [], onShareToDashboard, resetKey }: HomePageProps) {
   const { requireAuth, userAddress } = useAuth();
   const [prompt, setPrompt] = useState('');
   const [currentMessage, setCurrentMessage] = useState<ChatMessage | null>(null);
@@ -64,6 +66,14 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
 
   // Load chat from history if initialChatId is provided
   useEffect(() => {
+    if (initialChat) {
+      setCurrentMessage({
+        matchId: initialChat.matchId,
+        prompt: initialChat.prompt,
+        response: initialChat.response,
+      });
+      return;
+    }
     if (initialChatId && chatHistory.length > 0) {
       const selectedChat = chatHistory.find(chat => chat.id === initialChatId);
       if (selectedChat) {
@@ -72,12 +82,13 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
           prompt: selectedChat.prompt,
           response: selectedChat.response,
         });
+        return;
       }
-    } else if (!initialChatId) {
-      // New chat - clear current message
+    }
+    if (!initialChatId && !initialChat) {
       setCurrentMessage(null);
     }
-  }, [initialChatId, chatHistory]);
+  }, [initialChatId, initialChat, chatHistory]);
 
   const markShared = (matchId: string) => {
     setSharedPromptIds(prev => {
@@ -136,7 +147,27 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
       const normalizedAddr = userAddress?.toLowerCase?.();
       const addressMismatch =
         lastAuthAddress && normalizedAddr && lastAuthAddress !== normalizedAddr;
-          const authForRequest = authPayload ?? (addressMismatch ? null : paymentAuth ?? lastAuth);
+      const parseAuthTs = (auth?: string | null) => {
+        if (!auth) return 0;
+        try {
+          const raw = typeof window === 'undefined' ? Buffer.from(auth, 'base64').toString('utf8') : atob(auth);
+          const parsed = JSON.parse(raw);
+          return Number(parsed?.payload?.timestamp ?? parsed?.timestamp ?? 0);
+        } catch {
+          return 0;
+        }
+      };
+      const isFresh = (auth?: string | null) => {
+        const ts = parseAuthTs(auth);
+        return ts > 0 && Date.now() - ts < AUTH_TTL_MS;
+      };
+      const authForRequest =
+        authPayload ??
+        (isFresh(paymentAuth)
+          ? paymentAuth
+          : isFresh(lastAuth)
+            ? lastAuth
+            : null);
       await arenaApi.createChatStream(
         currentPrompt,
         // onChunk: 실시간 충크 추가
@@ -492,7 +523,7 @@ export function HomePage({ onBack, initialChatId, onChatCreated, chatHistory = [
 
       {/* AI Response */}
       <div className="mb-6">
-        <Card className="p-6 hover:shadow-xl transition-all duration-300 border-2 max-h-[600px] flex flex-col" style={{ borderColor: '#0052FF20' }}>
+        <Card className="p-6 hover:shadow-xl transition-all duration-300 border-2 h-[800px] flex flex-col" style={{ borderColor: '#0052FF20' }}>
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-gray-700">AI Assistant</h3>

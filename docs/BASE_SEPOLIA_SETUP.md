@@ -2,7 +2,7 @@
 
 ## 네트워크 정보
 
-LM Battle은 **Base Sepolia 테스트넷**을 사용합니다.
+ Proof-of-Prompt 은 **Base Sepolia 테스트넷**을 사용합니다.
 
 ### 네트워크 상세
 

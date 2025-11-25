@@ -126,7 +126,7 @@ Content-Type: application/json
     "amount": "10000",
     "price": "$0.01",
     "network": "base-sepolia",
-    "description": "LM Battle: 1 prompt answer",
+    "description": " Proof-of-Prompt : 1 prompt answer",
     "timestamp": 1700000000000,
     "facilitator_url": "https://x402.org/facilitator"
   }
@@ -137,7 +137,7 @@ Content-Type: application/json
 
 ```javascript
 // 메시지 생성 및 서명
-const message = "I authorize payment for $0.01 USD (10000 0xA449bc031fA0b815cA14fAFD0c5EdB75ccD9c80f) to 0x0000000000000000000000000000000000000000 on base-sepolia chain for: LM Battle: 1 prompt answer"
+const message = "I authorize payment for $0.01 USD (10000 0xA449bc031fA0b815cA14fAFD0c5EdB75ccD9c80f) to 0x0000000000000000000000000000000000000000 on base-sepolia chain for:  Proof-of-Prompt : 1 prompt answer"
 
 // 지갑에서 서명
 const signature = await signer.signMessage(message)

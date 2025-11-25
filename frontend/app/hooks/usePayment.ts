@@ -7,6 +7,7 @@ import { USDC_ADDRESS, USDC_ABI } from '../../lib/contracts/usdc-config';
 export type PaymentStatus = 'idle' | 'requires_signature' | 'authorizing' | 'processing';
 
 type SetMessageFn = (v: { prompt: string; response: string; matchId?: string } | null) => void;
+const AUTH_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 export interface PaymentState {
   pendingPayment: {
@@ -51,16 +52,36 @@ export function usePayment(currentAddress?: string): PaymentState {
       if (parsed?.auth && parsed?.address && parsed.address.toLowerCase() === currentAddress?.toLowerCase()) {
         return parsed as { address: string; auth: string };
       }
+      // 주소 불일치 시에도 auth는 반환해 동일 서명 재사용을 허용
+      if (parsed?.auth) {
+        return { address: parsed.address, auth: parsed.auth };
+      }
       return null;
     } catch {
       return null;
     }
   };
 
+  const isAuthFresh = (auth?: string | null) => {
+    if (!auth) return false;
+    try {
+      const raw = typeof window === 'undefined' ? Buffer.from(auth, 'base64').toString('utf8') : atob(auth);
+      const parsed = JSON.parse(raw);
+      const ts = Number(parsed?.payload?.timestamp ?? parsed?.timestamp ?? 0);
+      if (!ts) return false;
+      return Date.now() - ts < AUTH_TTL_MS;
+    } catch {
+      return false;
+    }
+  };
+
+  const stored = loadStoredAuth();
+  const initialAuth = stored?.auth && isAuthFresh(stored.auth) ? stored.auth : null;
+
   const [pendingPayment, setPendingPayment] = useState<PaymentState['pendingPayment']>(null);
-  const [paymentAuth, setPaymentAuth] = useState<string | null>(loadStoredAuth()?.auth ?? null);
-  const [lastAuth, setLastAuthState] = useState<string | null>(loadStoredAuth()?.auth ?? null);
-  const [lastAuthAddress, setLastAuthAddress] = useState<string | null>(loadStoredAuth()?.address ?? null);
+  const [paymentAuth, setPaymentAuth] = useState<string | null>(initialAuth);
+  const [lastAuth, setLastAuthState] = useState<string | null>(initialAuth);
+  const [lastAuthAddress, setLastAuthAddress] = useState<string | null>(stored?.address ?? null);
   const [status, setStatus] = useState<PaymentStatus>('idle');
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
@@ -74,14 +95,8 @@ export function usePayment(currentAddress?: string): PaymentState {
     // 주소가 존재하고, 이전 주소도 존재하며 서로 다를 때만 무효화
     if (prev && curr && prev !== curr) {
       prevAddressRef.current = currentAddress;
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('lastPaymentAuth');
-      }
-      setPaymentAuth(null);
-      setLastAuthState(null);
+      // 주소가 바뀌더라도 서명 세션은 유지 (멀티 탭 동일 주소 지원)
       setLastAuthAddress(null);
-      setPendingPayment(null);
-      setStatus('idle');
     } else {
       prevAddressRef.current = currentAddress;
     }
@@ -90,7 +105,9 @@ export function usePayment(currentAddress?: string): PaymentState {
   const setLastAuth = (value: string | null) => {
     setLastAuthState(value);
     setPaymentAuth(value);
-    setLastAuthAddress(currentAddress?.toLowerCase?.() || null);
+    if (value && isAuthFresh(value)) {
+      setLastAuthAddress(currentAddress?.toLowerCase?.() || null);
+    }
     if (typeof window !== 'undefined') {
       if (value) {
         localStorage.setItem('lastPaymentAuth', JSON.stringify({ address: currentAddress, auth: value }));

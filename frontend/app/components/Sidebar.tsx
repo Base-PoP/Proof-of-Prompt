@@ -76,7 +76,7 @@ export function Sidebar({
                 onNavigate('home');
               }}
               className={`flex items-center gap-1 hover:opacity-80 transition-opacity ${!isOpen && 'lg:flex-col lg:gap-0'}`}
-              title={!isOpen ? 'LM Battle' : undefined}
+              title={!isOpen ? ' Proof-of-Prompt ' : undefined}
             >
               {!isOpen && (
                 <span 
@@ -103,7 +103,7 @@ export function Sidebar({
                     letterSpacing: '-0.02em' 
                   }}
                 >
-                  LM Battle
+                   Proof-of-Prompt 
                 </span>
               )}
             </button>

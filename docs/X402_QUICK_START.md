@@ -85,7 +85,7 @@ curl -X POST http://localhost:4000/arena/chat \
     "amount": "10000",
     "price": "$0.01",
     "network": "base-sepolia",
-    "description": "LM Battle: 1 prompt answer",
+    "description": " Proof-of-Prompt : 1 prompt answer",
     "timestamp": 1700000000000
   }
 }

@@ -9,6 +9,8 @@
 import { prisma } from './prisma';
 import { ethers } from 'ethers';
 
+const X402_TTL_MS = Number(process.env.X402_SIGNATURE_TTL_MS || 24 * 60 * 60 * 1000); // default 24h
+
 export interface X402SignaturePayload {
   payload: {
     chainId: number;
@@ -74,13 +76,11 @@ export function createX402SignatureMessage(
  */
 export async function verifyX402Signature(payload: X402SignaturePayload): Promise<boolean> {
   try {
-    // 임시: 타임스탬프 검증 (5분 이내)
+    // 타임스탬프 검증 (기본 24h, env로 조정 가능)
     const now = Date.now();
     const timeDiff = Math.abs(now - payload.timestamp);
-    const fiveMinutes = 5 * 60 * 1000;
-
-    if (timeDiff > fiveMinutes) {
-      console.warn('x402 signature expired');
+    if (timeDiff > X402_TTL_MS) {
+      console.warn('x402 signature expired', { timestamp: payload.timestamp, now, ttl: X402_TTL_MS });
       return false;
     }
 
