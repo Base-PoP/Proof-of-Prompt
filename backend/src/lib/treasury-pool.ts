@@ -66,7 +66,7 @@ export class TreasuryPoolClient {
     if (config.privateKey) {
       const wallet = new ethers.Wallet(config.privateKey, this.provider);
       this.signer = wallet;
-      this.contract = this.contract.connect(wallet);
+      this.contract = this.contract.connect(wallet) as ethers.Contract;
     }
   }
 

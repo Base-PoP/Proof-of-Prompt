@@ -25,7 +25,7 @@
 ### 필요한 환경 변수
 ```env
 # 데이터베이스
-DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/lmarena?schema=public"
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/Proof-of-Prompt?schema=public"
 PORT=4000
 
 # 블록체인 설정 (Base Sepolia)
@@ -66,7 +66,7 @@ Private Subnet: 10.0.2.0/24 (RDS용)
 
 ### 2.2 Security Group 생성
 
-#### EC2 Security Group (`lmarena-backend-sg`)
+#### EC2 Security Group (`Proof-of-Prompt-backend-sg`)
 | 유형 | 프로토콜 | 포트 | 소스 | 설명 |
 |------|----------|------|------|------|
 | SSH | TCP | 22 | Your IP | SSH 접속 |
@@ -74,10 +74,10 @@ Private Subnet: 10.0.2.0/24 (RDS용)
 | HTTPS | TCP | 443 | 0.0.0.0/0 | Nginx SSL |
 | Custom TCP | TCP | 4000 | 10.0.0.0/16 | 내부 API (선택) |
 
-#### RDS Security Group (`lmarena-rds-sg`)
+#### RDS Security Group (`Proof-of-Prompt-rds-sg`)
 | 유형 | 프로토콜 | 포트 | 소스 | 설명 |
 |------|----------|------|------|------|
-| PostgreSQL | TCP | 5432 | lmarena-backend-sg | EC2에서만 접근 |
+| PostgreSQL | TCP | 5432 | Proof-of-Prompt-backend-sg | EC2에서만 접근 |
 
 ### 2.3 IAM 역할 생성 (선택사항)
 Secrets Manager 사용 시:
@@ -90,7 +90,7 @@ Secrets Manager 사용 시:
       "Action": [
         "secretsmanager:GetSecretValue"
       ],
-      "Resource": "arn:aws:secretsmanager:ap-northeast-2:*:secret:lmarena/*"
+      "Resource": "arn:aws:secretsmanager:ap-northeast-2:*:secret:Proof-of-Prompt/*"
     }
   ]
 }
@@ -157,20 +157,20 @@ sudo apt install -y git  # Ubuntu
    - **템플릿**: Free tier 또는 Production
    - **인스턴스**: db.t3.micro (테스트) / db.t3.small (프로덕션)
    - **스토리지**: 20GB gp2
-   - **DB 이름**: `lmarena`
+   - **DB 이름**: `Proof of Prompt`
    - **마스터 사용자**: `postgres`
    - **VPC**: EC2와 동일한 VPC
    - **퍼블릭 액세스**: No
-   - **Security Group**: `lmarena-rds-sg`
+   - **Security Group**: `proof-of-prompt-rds-sg`
 
 3. 생성 후 엔드포인트 확인:
    ```
-   lmarena-db.xxxxxxxxxxxx.ap-northeast-2.rds.amazonaws.com
+   proof-of-prompt.xxxxxxxxxxxx.ap-northeast-2.rds.amazonaws.com
    ```
 
 4. DATABASE_URL 형식:
    ```
-   postgresql://postgres:YOUR_PASSWORD@lmarena-db.xxxxxxxxxxxx.ap-northeast-2.rds.amazonaws.com:5432/lmarena?schema=public
+   postgresql://postgres:YOUR_PASSWORD@Proof-of-Prompt-db.xxxxxxxxxxxx.ap-northeast-2.rds.amazonaws.com:5432/Proof-of-Prompt?schema=public
    ```
 
 ### 옵션 B: EC2에 PostgreSQL 직접 설치
@@ -190,9 +190,9 @@ sudo systemctl enable postgresql
 sudo -u postgres psql
 
 # 데이터베이스 및 사용자 생성
-CREATE DATABASE lmarena;
-CREATE USER lmarena_user WITH ENCRYPTED PASSWORD 'your_secure_password';
-GRANT ALL PRIVILEGES ON DATABASE lmarena TO lmarena_user;
+CREATE DATABASE "Proof-of-Prompt";
+CREATE USER "PoP_user" WITH ENCRYPTED PASSWORD 'PoP123!';
+GRANT ALL PRIVILEGES ON DATABASE "Proof-of-Prompt" TO "PoP_user";
 \q
 
 # pg_hba.conf 수정 (로컬 접속 허용)
@@ -208,28 +208,28 @@ sudo systemctl restart postgresql
 
 ### 5.1 애플리케이션 디렉토리 생성
 ```bash
-sudo mkdir -p /var/www/lmarena
-sudo chown $USER:$USER /var/www/lmarena
-cd /var/www/lmarena
+sudo mkdir -p /var/www/proof-of-prompt
+sudo chown $USER:$USER /var/www/proof-of-prompt
+cd /var/www/proof-of-prompt
 ```
 
 ### 5.2 소스 코드 가져오기
 
 **방법 A: Git Clone**
 ```bash
-git clone https://github.com/YOUR_REPO/lmarena.git .
+git clone https://github.com/Base-PoP/Proof-of-Prompt.git .
 cd backend
 ```
 
 **방법 B: 직접 업로드 (SCP)**
 ```bash
 # 로컬에서 실행
-scp -i "your-key.pem" -r ./backend ec2-user@YOUR_EC2_IP:/var/www/lmarena/
+scp -i "your-key.pem" -r ./backend ec2-user@YOUR_EC2_IP:/var/www/proof-of-prompt/
 ```
 
 ### 5.3 의존성 설치
 ```bash
-cd /var/www/lmarena/backend
+cd /var/www/proof-of-prompt/backend
 npm ci  # package-lock.json 기반 설치 (권장)
 # 또는
 npm install
@@ -242,25 +242,22 @@ nano .env
 ```
 
 ```env
-# .env 파일 내용
-DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@YOUR_RDS_ENDPOINT:5432/lmarena?schema=public"
+DATABASE_URL="postgresql://PoP_user:PoP123!@localhost:5432/Proof-of-Prompt?schema=public"
 PORT=4000
 
 CHAIN_ID=84532
-RPC_URL="https://base-sepolia.g.alchemy.com/v2/YOUR_ALCHEMY_KEY"
+RPC_URL="https://base-sepolia.g.alchemy.com/v2/iBOJAoFZt9o_-w_JdylJf"
 USDC_ADDRESS="0x036CbD53842c5426634e7929541eC2318f3dCF7e"
-PAY_TO_ADDRESS="0x5e4D581D318ef0ff9e525529b40c3400457Fdbf6"
+PAY_TO_ADDRESS="0x5e4D581D318ef0ff9e525529b40c3400457Fdbf6" # Treasury/router when ready
+FACILITATOR_PRIVATE_KEY="0x1774fc2875e5a84a77f82298843ff1662a124b11bcb07a3381e553d9f634e4c3" # Payment broadcaster key
+REWARD_SIGNER_PRIVATE_KEY="0x1774fc2875e5a84a77f82298843ff1662a124b11bcb07a3381e553d9f634e4c3"
+REWARD_SIGNER="0x038f9eff208f4cefc0a7f856739a3405c419a147"
 
-FACILITATOR_PRIVATE_KEY="your_private_key"
-REWARD_SIGNER_PRIVATE_KEY="your_reward_signer_key"
-X402_ENABLED=true
-
-FLOCK_API_KEY="sk-your-flock-api-key"
+FLOCK_API_KEY="sk-FvHR-hTvfL8b-bwwh0WFTA"
 USE_MOCK=false
 
-WEEKLY_REWARD_INTERVAL_SEC=604800
-WEEKLY_REWARD_AMOUNTS=5000000,3000000,1000000
-ENABLE_WEEKLY_REWARD_JOB=true
+WEEKLY_REWARD_INTERVAL_SEC=86400
+WEEKLY_REWARD_AMOUNTS=50000,30000,10000
 ```
 
 ```bash
@@ -306,13 +303,13 @@ sudo npm install -g pm2
 
 ### 6.2 애플리케이션 시작
 ```bash
-cd /var/www/lmarena/backend
+cd /var/www/proof-of-prompt/backend
 
 # PM2로 시작
-pm2 start dist/index.js --name "lmarena-backend"
+pm2 start dist/index.js --name "proof-of-prompt-backend"
 
 # 로그 확인
-pm2 logs lmarena-backend
+pm2 logs Proof-of-Prompt-backend
 
 # 상태 확인
 pm2 status
@@ -335,17 +332,17 @@ nano ecosystem.config.js
 ```javascript
 module.exports = {
   apps: [{
-    name: 'lmarena-backend',
+    name: 'Proof-of-Prompt-backend',
     script: 'dist/index.js',
-    cwd: '/var/www/lmarena/backend',
+    cwd: '/var/www/Proof-of-Prompt/backend',
     instances: 1,  // 주간 보상 작업 때문에 1개만 권장
     exec_mode: 'fork',
     env: {
       NODE_ENV: 'production',
       PORT: 4000
     },
-    error_file: '/var/log/pm2/lmarena-error.log',
-    out_file: '/var/log/pm2/lmarena-out.log',
+    error_file: '/var/log/pm2/Proof-of-Prompt-error.log',
+    out_file: '/var/log/pm2/Proof-of-Prompt-out.log',
     merge_logs: true,
     time: true
   }]
@@ -370,7 +367,7 @@ sudo apt install -y nginx  # Ubuntu
 
 ### 7.2 Nginx 설정
 ```bash
-sudo nano /etc/nginx/conf.d/lmarena.conf
+sudo nano /etc/nginx/conf.d/Proof-of-Prompt.conf
 ```
 
 ```nginx
@@ -452,7 +449,7 @@ sudo crontab -e
 pm2 monit
 
 # 로그 확인
-pm2 logs lmarena-backend --lines 100
+pm2 logs Proof-of-Prompt-backend --lines 100
 ```
 
 ### 9.2 CloudWatch 에이전트 설치 (선택)
@@ -466,7 +463,7 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-config-wizard
 
 ### 9.3 로그 로테이션
 ```bash
-sudo nano /etc/logrotate.d/pm2-lmarena
+sudo nano /etc/logrotate.d/pm2-Proof-of-Prompt
 ```
 
 ```
@@ -490,7 +487,7 @@ sudo nano /etc/logrotate.d/pm2-lmarena
 #### 1. 데이터베이스 연결 실패
 ```bash
 # RDS 연결 테스트
-psql -h YOUR_RDS_ENDPOINT -U postgres -d lmarena
+psql -h YOUR_RDS_ENDPOINT -U postgres -d Proof-of-Prompt
 
 # Security Group 확인
 # - EC2 SG가 RDS SG의 인바운드에 있는지 확인
@@ -541,13 +538,13 @@ pm2 startup
 ### 유용한 명령어 모음
 ```bash
 # 애플리케이션 재시작
-pm2 restart lmarena-backend
+pm2 restart Proof-of-Prompt-backend
 
 # 애플리케이션 중지
-pm2 stop lmarena-backend
+pm2 stop Proof-of-Prompt-backend
 
 # 로그 실시간 확인
-pm2 logs lmarena-backend -f
+pm2 logs Proof-of-Prompt-backend -f
 
 # Nginx 재시작
 sudo systemctl restart nginx
@@ -588,7 +585,7 @@ htop
 ## 업데이트 배포 절차
 
 ```bash
-cd /var/www/lmarena/backend
+cd /var/www/proof-of-prompt/backend
 
 # 1. 소스 코드 업데이트
 git pull origin main
@@ -606,8 +603,8 @@ npx prisma db push
 npm run build
 
 # 6. PM2 재시작
-pm2 restart lmarena-backend
+pm2 restart proof-of-prompt-backend
 
 # 7. 로그 확인
-pm2 logs lmarena-backend --lines 50
+pm2 logs proof-of-prompt-backend --lines 50
 ```

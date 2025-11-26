@@ -14,20 +14,34 @@ export async function getUserAchievementContext(walletAddress: string) {
     include: {
       prompts: {
         where: { isShared: true },
-        include: { matches: true }
+        include: {
+          matches: {
+            include: {
+              responses: true,
+              modelA: true
+            }
+          }
+        }
       },
       userAchievements: true
     }
   });
 
   if (!user) {
-    user = await prisma.user.create({ data: { nickname: walletAddress } });
+    await prisma.user.create({ data: { nickname: walletAddress } });
     user = await prisma.user.findFirst({
       where: { nickname: walletAddress },
       include: {
         prompts: {
           where: { isShared: true },
-          include: { matches: true }
+          include: {
+            matches: {
+              include: {
+                responses: true,
+                modelA: true
+              }
+            }
+          }
         },
         userAchievements: true
       }
@@ -98,7 +112,6 @@ export async function evaluateAchievementsForUser(userId: number, stats?: Achiev
         });
         userAchievementMap.set(ach.id, created);
       } catch (err: any) {
-        // 동시성/중복으로 인한 유니크 제약 위반은 무시하고 진행
         if (err?.code !== 'P2002') {
           throw err;
         }
