@@ -136,11 +136,11 @@ export const createChatHandler = async (req: Request, res: Response) => {
       txHash,
       method: permit ? "permit" : "allowance",
     });
-    await recordPaymentAuthorization(walletAddress, {
+    await recordPaymentAuthorization(walletAddress, JSON.stringify({
       nonce: txHash,
       amount: amount.toString(),
       timestamp: Date.now(),
-    });
+    }));
   } catch (err: any) {
     console.error("❌ [PAYMENT FAILED]", err);
     const code = err?.code;
@@ -283,11 +283,11 @@ export const createChatStreamHandler = async (req: Request, res: Response) => {
       txHash,
       method: "allowance",
     });
-    await recordPaymentAuthorization(walletAddress, {
+    await recordPaymentAuthorization(walletAddress, JSON.stringify({
       nonce: txHash,
       amount: amount.toString(),
       timestamp: Date.now(),
-    });
+    }));
   } catch (err: any) {
     console.error("❌ [PAYMENT FAILED - STREAM]", err);
     const code = err?.code;

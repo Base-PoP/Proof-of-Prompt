@@ -105,11 +105,11 @@ export async function processAutoPayment(
       console.log(`[⚠️  테스트 모드] 실제 트랜잭션 대신 기록만 저장합니다`);
       
       // 데이터베이스에 결제 기록 저장
-      await recordPaymentAuthorization(walletAddress, {
+      await recordPaymentAuthorization(walletAddress, JSON.stringify({
         nonce: `payment-${Date.now()}`,
         amount,
         timestamp: Date.now(),
-      });
+      }));
       
       console.log('[✅] 결제 기록 저장 완료\n');
       return { success: true, txHash: null, mode: 'simulated' };
@@ -154,12 +154,12 @@ export async function processAutoPayment(
     console.log(`└─ 가스 사용: ${receipt?.gasUsed.toString()}\n`);
 
     // 데이터베이스에 결제 기록 저장
-    await recordPaymentAuthorization(walletAddress, {
+    await recordPaymentAuthorization(walletAddress, JSON.stringify({
       nonce: `payment-${receipt?.transactionHash}`,
       amount,
       timestamp: Date.now(),
       txHash: receipt?.transactionHash,
-    });
+    }));
 
     return {
       success: true,
