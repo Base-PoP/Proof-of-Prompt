@@ -144,9 +144,6 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
     }
 
     try {
-      const normalizedAddr = userAddress?.toLowerCase?.();
-      const addressMismatch =
-        lastAuthAddress && normalizedAddr && lastAuthAddress !== normalizedAddr;
       const parseAuthTs = (auth?: string | null) => {
         if (!auth) return 0;
         try {
@@ -211,7 +208,7 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
         if (userAddress && pendingPayment) {
           try {
             setPaymentStatus('authorizing');
-            const approvalTx = await approveForPayment(pendingPayment);
+            await approveForPayment(pendingPayment);
             const authPayloadSigned = await signForPayment(pendingPayment);
             setPaymentAuth(authPayloadSigned);
             setLastAuth(authPayloadSigned);
@@ -251,16 +248,17 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
 
   const handleApprove = async () => {
     if (!pendingPayment || !pendingPayment.prompt) return;
+    const pendingPrompt = pendingPayment.prompt;
 
     requireAuth(async () => {
       setPaymentStatus('authorizing');
       try {
-        const approvalTx = await approveForPayment(pendingPayment);
+        await approveForPayment(pendingPayment);
         const authPayloadSigned = await signForPayment(pendingPayment);
         setPaymentAuth(authPayloadSigned);
         setLastAuth(authPayloadSigned);
         setPendingPayment(null);
-        await handleSubmitWithPrompt(pendingPayment.prompt, true, authPayloadSigned);
+        await handleSubmitWithPrompt(pendingPrompt, true, authPayloadSigned);
       } finally {
         setPaymentStatus('idle');
       }
@@ -269,11 +267,12 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
 
   const handleShare = async () => {
     if (!currentMessage || !currentMessage.matchId) return;
+    const matchId = currentMessage.matchId;
 
     const agreed = confirm('대화 내용에 개인정보가 포함되지 않았음을 확인했으며, 공개에 동의하시나요?');
     if (!agreed) return;
 
-    if (sharedPromptIds.has(currentMessage.matchId)) {
+    if (sharedPromptIds.has(matchId)) {
       toast.error('이미 공유된 대화입니다', {
         description: '대시보드에서 확인하세요.',
       });
@@ -297,18 +296,18 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
             id: toastId,
             description: '대시보드에서 확인하세요.',
           });
-          const newId = created.promptId?.toString?.() || created.id?.toString?.() || '';
-          markShared(currentMessage.matchId);
+          const newId = created.promptId?.toString?.() || '';
+          markShared(matchId);
           onShareToDashboard?.(newId);
           return;
         }
-        const result = await arenaApi.sharePrompt(Number(currentMessage.matchId), wallet);
+        const result = await arenaApi.sharePrompt(Number(matchId), wallet);
         const sharedId = result.prompt?.id?.toString?.() || '';
         toast.success('게시글이 공유되었습니다!', {
           id: toastId,
           description: '대시보드에서 확인하세요.',
         });
-        markShared(currentMessage.matchId);
+        markShared(matchId);
         onShareToDashboard?.(sharedId);
       } catch (err) {
         toast.error('게시글 공유 실패', {

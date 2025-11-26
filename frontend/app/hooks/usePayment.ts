@@ -147,6 +147,7 @@ export function usePayment(currentAddress?: string): PaymentState {
   };
 
   const signForPayment = async (payment: PaymentState['pendingPayment']) => {
+    if (!payment) throw new Error('No payment to sign');
     if (!walletClient) throw new Error('Wallet not connected');
     const address = walletClient.account.address;
     const price = payment.price || (Number(payment.amount || '0') / 1e6).toFixed(2);

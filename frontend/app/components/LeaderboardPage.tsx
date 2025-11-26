@@ -104,7 +104,11 @@ export function LeaderboardPage({ onSelectPost }: LeaderboardPageProps) {
     
     try {
       const sharedPrompts = await usersApi.getUserSharedPrompts(walletAddress, 'likes');
-      setSelectedUser({ nickname: walletAddress, posts: sharedPrompts });
+      const normalizedPosts: PromptItem[] = sharedPrompts.map((p) => ({
+        ...p,
+        id: p.id.toString(),
+      }));
+      setSelectedUser({ nickname: walletAddress, posts: normalizedPosts });
     } catch (err) {
       console.error('Failed to fetch user posts:', err);
       setUserPostsError('공유된 프롬프트를 불러오지 못했습니다.');

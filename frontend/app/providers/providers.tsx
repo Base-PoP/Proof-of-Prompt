@@ -42,11 +42,11 @@ export function Providers({ children }: { children: ReactNode }) {
   const privyConfig = useMemo(
     () => ({
       embeddedWallets: {
-        createOnLogin: 'users-without-wallets' as const,
+        createOnLogin: 'users-without-wallets',
         requireUserPasswordOnCreate: false,
         noPromptOnSignature: false,
       },
-      loginMethods: ['wallet', 'farcaster', 'email', 'google', 'twitter'] as const,
+      loginMethods: ['wallet', 'farcaster', 'email', 'google', 'twitter'],
       appearance: {
         theme: 'light' as const,
         accentColor: '#0052FF' as `#${string}`,

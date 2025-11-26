@@ -8,7 +8,7 @@ import { promptsApi, arenaApi } from '../../lib/api';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
 import { env } from '../../lib/config';
-import { Category, CATEGORIES, CATEGORY_COLORS, WEEKLY_REWARD_INTERVAL_MS } from '../../lib/constants';
+import { Category, CATEGORIES, CATEGORY_COLORS } from '../../lib/constants';
 
 interface Post {
   id: string;
@@ -53,7 +53,6 @@ export function DashboardPage({ onSelectPost, draftPost, onPostCreated }: Dashbo
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [countdown, setCountdown] = useState<number>(WEEKLY_REWARD_INTERVAL_MS);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [sortBy, setSortBy] = useState<'latest' | 'popular'>('latest');
   const [hasMore, setHasMore] = useState(true);
@@ -95,15 +94,7 @@ export function DashboardPage({ onSelectPost, draftPost, onPostCreated }: Dashbo
   }, [sortBy, selectedCategory, userAddress]);
 
   // 주간 보상 카운트다운 (테스트 기본 1분)
-  useEffect(() => {
-    const start = Date.now();
-    const timer = setInterval(() => {
-      const elapsed = Date.now() - start;
-      const remaining = WEEKLY_REWARD_INTERVAL_MS - (elapsed % WEEKLY_REWARD_INTERVAL_MS);
-      setCountdown(remaining);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+  // Weekly reward countdown removed (unused in UI)
 
   useEffect(() => {
     if (draftPost && lastSharedMatchIdRef.current !== draftPost.matchId) {
@@ -180,13 +171,6 @@ export function DashboardPage({ onSelectPost, draftPost, onPostCreated }: Dashbo
     if (onSelectPost) {
       onSelectPost(postId);
     }
-  };
-
-  const formatCountdown = (ms: number) => {
-    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
   const handleLoadMore = () => {
@@ -441,4 +425,3 @@ export function DashboardPage({ onSelectPost, draftPost, onPostCreated }: Dashbo
     </div>
   );
 }
-

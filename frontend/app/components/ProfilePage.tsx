@@ -29,7 +29,7 @@ interface UserStats {
 }
 
 interface SharedPost {
-  id: number;
+  id: string;
   title: string;
   prompt: string;
   response: string;
@@ -73,7 +73,17 @@ export function ProfilePage() {
         setIsLoadingProfile(true);
         const profile = await usersApi.getUserProfile(address);
         setUserStats(profile.stats);
-        setPopularPrompts(profile.popularPrompts);
+        const normalizedPrompts: SharedPost[] = profile.popularPrompts.map((p) => ({
+          id: p.id.toString(),
+          title: p.title || 'Untitled',
+          prompt: p.prompt,
+          response: p.response,
+          modelName: p.modelName || 'Unknown model',
+          likes: p.likes ?? 0,
+          createdAt: p.createdAt,
+          tags: Array.isArray((p as SharedPost).tags) ? (p as SharedPost).tags : [],
+        }));
+        setPopularPrompts(normalizedPrompts);
         setJoinDate(new Date(profile.user.createdAt).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short' }));
         
         // Fetch achievements

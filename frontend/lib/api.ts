@@ -26,6 +26,8 @@ export class PaymentRequiredError extends Error {
 }
 
 interface ApiFetchOptions extends RequestInit {
+  x402?: { address: string; provider: unknown };
+  skipX402?: boolean;
 }
 
 async function apiFetch<T>(endpoint: string, options?: ApiFetchOptions): Promise<T> {

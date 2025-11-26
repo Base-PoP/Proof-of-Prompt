@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { Home, LayoutDashboard, Trophy, User, Menu, Plus, ChevronLeft, MessageSquare, Trash2 } from 'lucide-react';
 import { Button } from './ui/button';
 
@@ -80,10 +81,13 @@ export function Sidebar({
             >
               {!isOpen && (
                 <div className="hidden lg:block relative w-8 h-8">
-                  <img 
-                    src="/images/pop_logo.png" 
-                    alt="POP Logo" 
-                    className="object-contain w-full h-full"
+                  <Image
+                    src="/images/pop_logo.png"
+                    alt="POP Logo"
+                    fill
+                    className="object-contain"
+                    sizes="32px"
+                    priority={false}
                   />
                 </div>
               )}
