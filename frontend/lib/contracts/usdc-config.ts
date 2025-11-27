@@ -1,6 +1,6 @@
 // Base Sepolia USDC Contract Configuration
 
-export const USDC_ADDRESS = '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as const;
+export const USDC_ADDRESS = (process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x13a332e3E45a2A0D96B66f79e5b34694Dc288b46') as `0x${string}`;
 
 // ERC20 ABI for USDC (only the functions we need)
 export const USDC_ABI = [
