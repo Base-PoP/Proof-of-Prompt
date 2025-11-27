@@ -2,6 +2,40 @@
 
 export const USDC_ADDRESS = (process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x13a332e3E45a2A0D96B66f79e5b34694Dc288b46') as `0x${string}`;
 
+// Faucet Contract Configuration
+export const FAUCET_ADDRESS = (process.env.NEXT_PUBLIC_FAUCET_ADDRESS || '0xFDAb399B8207F02F3e4eBDb8C4426C8143bf77aF') as `0x${string}`;
+
+export const FAUCET_ABI = [
+  {
+    inputs: [],
+    name: 'claim',
+    outputs: [],
+    stateMutability: 'nonReentrant',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'user', type: 'address' }],
+    name: 'canClaim',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'user', type: 'address' }],
+    name: 'timeUntilNextClaim',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'dripAmount',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const;
+
 // ERC20 ABI for USDC (only the functions we need)
 export const USDC_ABI = [
   {
