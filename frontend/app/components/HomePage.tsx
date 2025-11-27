@@ -48,7 +48,7 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sharedPromptIds, setSharedPromptIds] = useState<Set<string>>(new Set());
-  const { pendingPayment, setPendingPayment, status: paymentStatus, setStatus: setPaymentStatus, paymentAuth, setPaymentAuth, lastAuth, setLastAuth, lastAuthAddress, approveForPayment, signForPayment, handlePaymentError } = usePayment(userAddress || undefined);
+  const { pendingPayment, setPendingPayment, status: paymentStatus, setStatus: setPaymentStatus, paymentAuth, setPaymentAuth, lastAuth, setLastAuth, lastAuthAddress, isWalletReady, approveForPayment, signForPayment, handlePaymentError } = usePayment(userAddress || undefined);
 
   // 로컬 저장소에 공유된 matchId 기록
   useEffect(() => {
@@ -204,8 +204,8 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
     } catch (err: unknown) {
       const handled = handlePaymentError(err, currentPrompt, setPrompt, setCurrentMessage, setError, isPaymentRetry);
       if (handled) {
-        // 자동 승인 후 재시도 시도
-        if (userAddress && pendingPayment) {
+        // 자동 승인 후 재시도 시도 (walletClient가 준비되었을 때만)
+        if (userAddress && pendingPayment && isWalletReady) {
           try {
             setPaymentStatus('authorizing');
             await approveForPayment(pendingPayment);
@@ -217,6 +217,7 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
             return;
           } catch (signErr) {
             console.error('Auto sign failed:', signErr);
+            setError(signErr instanceof Error ? signErr.message : '결제 승인 실패');
             setPaymentStatus('requires_signature');
             setIsLoading(false);
             return;
@@ -238,7 +239,7 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approveForPayment, handlePaymentError, lastAuth, lastAuthAddress, paymentAuth, pendingPayment, requireAuth, setLastAuth, setPaymentAuth, setPaymentStatus, setPendingPayment, userAddress, onChatCreated]);
+  }, [approveForPayment, handlePaymentError, isWalletReady, lastAuth, lastAuthAddress, paymentAuth, pendingPayment, requireAuth, setLastAuth, setPaymentAuth, setPaymentStatus, setPendingPayment, userAddress, onChatCreated]);
 
   // 기존 handleSubmit은 현재 prompt 상태를 사용
   const handleSubmit = useCallback(async () => {
@@ -250,6 +251,11 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
     if (!pendingPayment || !pendingPayment.prompt) return;
     const pendingPrompt = pendingPayment.prompt;
 
+    if (!isWalletReady) {
+      setError('지갑이 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+
     requireAuth(async () => {
       setPaymentStatus('authorizing');
       try {
@@ -259,6 +265,9 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
         setLastAuth(authPayloadSigned);
         setPendingPayment(null);
         await handleSubmitWithPrompt(pendingPrompt, true, authPayloadSigned);
+      } catch (err) {
+        console.error('Approve failed:', err);
+        setError(err instanceof Error ? err.message : '결제 승인 실패');
       } finally {
         setPaymentStatus('idle');
       }
