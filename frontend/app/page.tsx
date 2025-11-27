@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { WalletButton } from './components/WalletButton';
 import { WalletBalance } from './components/WalletBalance';
 import { Sidebar } from './components/Sidebar';
@@ -9,6 +9,7 @@ import { DashboardPage } from './components/DashboardPage';
 import { ConversationPage } from './components/ConversationPage';
 import { LeaderboardPage } from './components/LeaderboardPage';
 import { ProfilePage } from './components/ProfilePage';
+import { useWalletStore } from './store/wallet-store';
 
 type Page = 'home' | 'dashboard' | 'conversation' | 'leaderboard' | 'profile';
 
@@ -21,9 +22,19 @@ interface ChatHistoryItem {
   timestamp: string;
 }
 
+// 지갑 주소별 localStorage 키 생성 헬퍼
+const getChatHistoryKey = (walletAddress: string | null) => {
+  if (!walletAddress) return null;
+  return `chatHistory_${walletAddress.toLowerCase()}`;
+};
+
 export default function Home() {
   const [isRestoringState, setIsRestoringState] = useState(true);
-  
+
+  // 지갑 상태 가져오기
+  const { userAddress, isAuthenticated } = useWalletStore();
+  const previousWalletRef = useRef<string | null>(null);
+
   // 페이지 상태를 localStorage에서 복원
   const [currentPage, setCurrentPage] = useState<Page>('home');
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -34,29 +45,77 @@ export default function Home() {
   const [selectedChat, setSelectedChat] = useState<ChatHistoryItem | null>(null);
   const [homeResetKey, setHomeResetKey] = useState(0);
 
+  // 지갑 주소에 따른 채팅 내역 로드
+  const loadChatHistoryForWallet = (walletAddress: string | null) => {
+    if (typeof window === 'undefined') return [];
+
+    const key = getChatHistoryKey(walletAddress);
+    if (!key) return [];
+
+    const savedHistory = localStorage.getItem(key);
+    if (savedHistory) {
+      try {
+        return JSON.parse(savedHistory);
+      } catch (e) {
+        console.error('Failed to parse chat history:', e);
+        return [];
+      }
+    }
+    return [];
+  };
+
   // 초기 마운트 시 localStorage에서 상태 복원
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedPage = localStorage.getItem('currentPage') as Page;
       const savedPostId = localStorage.getItem('selectedPostId');
       const savedChatId = localStorage.getItem('activeChatId');
-      const savedChatHistory = localStorage.getItem('chatHistory');
-      
+
       if (savedPage) setCurrentPage(savedPage);
       if (savedPostId) setSelectedPostId(savedPostId);
       if (savedChatId) setActiveChatId(savedChatId);
-      if (savedChatHistory) {
-        try {
-          setChatHistory(JSON.parse(savedChatHistory));
-        } catch (e) {
-          console.error('Failed to parse chat history:', e);
-        }
+
+      // 지갑 주소가 있으면 해당 지갑의 채팅 내역 로드
+      if (userAddress) {
+        const history = loadChatHistoryForWallet(userAddress);
+        setChatHistory(history);
+        previousWalletRef.current = userAddress;
       }
-      
+
       // 상태 복원 완료
       setIsRestoringState(false);
     }
   }, []);
+
+  // 지갑 주소 변경 감지 및 채팅 내역 전환
+  useEffect(() => {
+    if (isRestoringState) return;
+
+    const currentWallet = userAddress?.toLowerCase() || null;
+    const previousWallet = previousWalletRef.current?.toLowerCase() || null;
+
+    // 지갑 주소가 변경되었을 때
+    if (currentWallet !== previousWallet) {
+      console.log(`Chat history wallet change: ${previousWallet} -> ${currentWallet}`);
+
+      // 새 지갑의 채팅 내역 로드 (없으면 빈 배열)
+      if (currentWallet && isAuthenticated) {
+        const history = loadChatHistoryForWallet(userAddress);
+        setChatHistory(history);
+      } else {
+        // 지갑 연결 해제 시 채팅 내역 초기화
+        setChatHistory([]);
+      }
+
+      // 상태 초기화
+      setActiveChatId(null);
+      setSelectedChat(null);
+      setSelectedPostId(null);
+      setCurrentPage('home');
+
+      previousWalletRef.current = userAddress;
+    }
+  }, [userAddress, isAuthenticated, isRestoringState]);
 
   // 페이지 상태 변경 시 localStorage에 저장
   useEffect(() => {
@@ -85,12 +144,15 @@ export default function Home() {
     }
   }, [activeChatId, isRestoringState]);
 
-  // chatHistory가 변경될 때 localStorage에 저장
+  // chatHistory가 변경될 때 지갑 주소별로 localStorage에 저장
   useEffect(() => {
-    if (typeof window !== 'undefined' && !isRestoringState) {
-      localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+    if (typeof window !== 'undefined' && !isRestoringState && userAddress) {
+      const key = getChatHistoryKey(userAddress);
+      if (key) {
+        localStorage.setItem(key, JSON.stringify(chatHistory));
+      }
     }
-  }, [chatHistory, isRestoringState]);
+  }, [chatHistory, isRestoringState, userAddress]);
 
   // 새 채팅 추가 함수
   const addChatToHistory = (matchId: string, prompt: string, response: string) => {
