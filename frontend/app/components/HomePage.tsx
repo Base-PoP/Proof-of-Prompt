@@ -48,7 +48,7 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sharedPromptIds, setSharedPromptIds] = useState<Set<string>>(new Set());
-  const { pendingPayment, setPendingPayment, status: paymentStatus, setStatus: setPaymentStatus, paymentAuth, setPaymentAuth, lastAuth, setLastAuth, lastAuthAddress, isWalletReady, approveForPayment, signForPayment, handlePaymentError } = usePayment(userAddress || undefined);
+  const { pendingPayment, setPendingPayment, status: paymentStatus, setStatus: setPaymentStatus, paymentAuth, setPaymentAuth, lastAuth, setLastAuth, lastAuthAddress, isWalletReady, approveForPayment, signForPayment, isAuthValidForAddress, handlePaymentError } = usePayment(userAddress || undefined);
 
   // 이번 결제 플로우에서 이미 approve를 완료했는지 추적
   const hasApprovedInFlowRef = useRef(false);
@@ -199,11 +199,17 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
         const ts = parseAuthTs(auth);
         return ts > 0 && Date.now() - ts < AUTH_TTL_MS;
       };
+      // auth가 현재 지갑 주소와 일치하고 유효한지 확인
+      const isValidAuth = (auth?: string | null) => {
+        return isFresh(auth) && isAuthValidForAddress(auth, userAddress);
+      };
+      // authPayload도 주소 검증 필요 (다른 지갑의 auth 사용 방지)
+      const validAuthPayload = authPayload && isAuthValidForAddress(authPayload, userAddress) ? authPayload : null;
       const authForRequest =
-        authPayload ??
-        (isFresh(paymentAuth)
+        validAuthPayload ??
+        (isValidAuth(paymentAuth)
           ? paymentAuth
-          : isFresh(lastAuth)
+          : isValidAuth(lastAuth)
             ? lastAuth
             : null);
       await arenaApi.createChatStream(
