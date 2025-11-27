@@ -233,16 +233,20 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
         userAddress || undefined
       );
     } catch (err: unknown) {
+      // 에러에서 직접 payment 정보 추출 (상태 업데이트는 비동기이므로)
+      const paymentErr = err as { name?: string; payment?: typeof pendingPayment; allowanceRequired?: boolean; reason?: string };
+      const errorPayment = paymentErr?.payment ? { ...paymentErr.payment, prompt: currentPrompt, allowanceRequired: paymentErr.allowanceRequired, reason: paymentErr.reason } : null;
+
       const handled = handlePaymentError(err, currentPrompt, setPrompt, setCurrentMessage, setError, isPaymentRetry);
-      if (handled) {
-        // 자동 승인 후 재시도 시도
-        if (userAddress && pendingPayment) {
+      if (handled && errorPayment) {
+        // 자동 승인 후 재시도 시도 (에러에서 추출한 payment 사용)
+        if (userAddress) {
           if (isWalletReady) {
             // walletClient가 준비되어 있으면 바로 처리
             try {
               setPaymentStatus('authorizing');
-              await approveForPayment(pendingPayment);
-              const authPayloadSigned = await signForPayment(pendingPayment);
+              await approveForPayment(errorPayment);
+              const authPayloadSigned = await signForPayment(errorPayment);
               setPaymentAuth(authPayloadSigned);
               setLastAuth(authPayloadSigned);
               setPendingPayment(null);
@@ -258,9 +262,16 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
           } else {
             // walletClient가 준비되지 않았으면 대기열에 추가 (준비되면 자동 처리)
             console.log('Wallet not ready, queuing payment for auto-approval...');
-            pendingApproveRef.current = { payment: pendingPayment, prompt: currentPrompt };
+            pendingApproveRef.current = { payment: errorPayment, prompt: currentPrompt };
           }
         }
+        setIsLoading(false);
+        setPaymentStatus('requires_signature');
+        setPrompt(currentPrompt);
+        setCurrentMessage(null);
+        setLastAuth(null);
+      } else if (handled) {
+        // payment 정보가 없는 경우
         setIsLoading(false);
         setPaymentStatus('requires_signature');
         setPrompt(currentPrompt);
