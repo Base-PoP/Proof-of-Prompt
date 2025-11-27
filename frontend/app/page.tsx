@@ -64,7 +64,7 @@ export default function Home() {
     return [];
   };
 
-  // 초기 마운트 시 localStorage에서 상태 복원
+  // 초기 마운트 시 localStorage에서 페이지 상태만 복원
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedPage = localStorage.getItem('currentPage') as Page;
@@ -75,24 +75,19 @@ export default function Home() {
       if (savedPostId) setSelectedPostId(savedPostId);
       if (savedChatId) setActiveChatId(savedChatId);
 
-      // 지갑 주소가 있으면 해당 지갑의 채팅 내역 로드
-      if (userAddress) {
-        const history = loadChatHistoryForWallet(userAddress);
-        setChatHistory(history);
-        previousWalletRef.current = userAddress;
-      }
-
-      // 상태 복원 완료
+      // 상태 복원 완료 (채팅 내역은 지갑 주소 확정 후 로드)
       setIsRestoringState(false);
     }
   }, []);
 
   // 지갑 주소 변경 감지 및 채팅 내역 전환
+  // 초기 로드 시에도 userAddress가 확정되면 채팅 내역 로드
   useEffect(() => {
     if (isRestoringState) return;
 
     const currentWallet = userAddress?.toLowerCase() || null;
     const previousWallet = previousWalletRef.current?.toLowerCase() || null;
+    const isInitialLoad = previousWallet === null && currentWallet !== null;
 
     // 지갑 주소가 변경되었을 때
     if (currentWallet !== previousWallet) {
@@ -107,11 +102,13 @@ export default function Home() {
         setChatHistory([]);
       }
 
-      // 상태 초기화
-      setActiveChatId(null);
-      setSelectedChat(null);
-      setSelectedPostId(null);
-      setCurrentPage('home');
+      // 초기 로드가 아닌 경우에만 상태 초기화 (지갑 전환 시)
+      if (!isInitialLoad) {
+        setActiveChatId(null);
+        setSelectedChat(null);
+        setSelectedPostId(null);
+        setCurrentPage('home');
+      }
 
       previousWalletRef.current = userAddress;
     }

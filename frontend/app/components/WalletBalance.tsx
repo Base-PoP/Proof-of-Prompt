@@ -50,18 +50,26 @@ export function WalletBalance() {
 
     const currentAddress = address.toLowerCase();
     const previousAddress = previousAddressRef.current?.toLowerCase();
+    let timeoutId: NodeJS.Timeout | null = null;
 
     // 지갑 주소가 변경되었을 때 상태 갱신
     if (previousAddress && currentAddress !== previousAddress) {
       console.log(`WalletBalance: Address changed from ${previousAddress} to ${currentAddress}`);
       // 약간의 딜레이 후 refetch (컨트랙트 쿼리가 새 주소로 업데이트된 후)
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         refetchBalance();
         refetchCanClaim();
       }, 100);
     }
 
     previousAddressRef.current = address;
+
+    // Cleanup: 컴포넌트 언마운트 또는 의존성 변경 시 타이머 정리
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
   }, [address, isMounted, refetchBalance, refetchCanClaim]);
 
   // Faucet claim 트랜잭션

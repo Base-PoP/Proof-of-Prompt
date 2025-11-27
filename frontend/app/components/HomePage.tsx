@@ -67,6 +67,9 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
   // walletClient가 준비되면 대기 중인 결제 자동 처리
   const pendingApproveRef = useRef<{ payment: typeof pendingPayment; prompt: string } | null>(null);
 
+  // handleSubmitWithPrompt의 최신 참조를 유지하는 ref (useEffect 의존성 문제 해결)
+  const handleSubmitWithPromptRef = useRef<((promptText: string, isPaymentRetry: boolean, authPayload?: string | null) => Promise<void>) | null>(null);
+
   useEffect(() => {
     // walletClient가 준비되고, 대기 중인 결제가 있으면 자동 처리
     if (isWalletReady && pendingApproveRef.current && paymentStatus === 'requires_signature') {
@@ -81,7 +84,8 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
           setPaymentAuth(authPayloadSigned);
           setLastAuth(authPayloadSigned);
           setPendingPayment(null);
-          await handleSubmitWithPrompt(pendingPrompt, true, authPayloadSigned);
+          // ref를 통해 최신 함수 호출
+          await handleSubmitWithPromptRef.current?.(pendingPrompt, true, authPayloadSigned);
         } catch (err) {
           console.error('Auto approve failed:', err);
           setError(err instanceof Error ? err.message : '결제 승인 실패');
@@ -274,6 +278,11 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [approveForPayment, handlePaymentError, isWalletReady, lastAuth, lastAuthAddress, paymentAuth, pendingPayment, requireAuth, setLastAuth, setPaymentAuth, setPaymentStatus, setPendingPayment, userAddress, onChatCreated]);
+
+  // handleSubmitWithPrompt ref 업데이트 (useEffect 의존성 문제 해결)
+  useEffect(() => {
+    handleSubmitWithPromptRef.current = handleSubmitWithPrompt;
+  }, [handleSubmitWithPrompt]);
 
   // 기존 handleSubmit은 현재 prompt 상태를 사용
   const handleSubmit = useCallback(async () => {
