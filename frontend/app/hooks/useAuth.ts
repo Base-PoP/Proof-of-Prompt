@@ -1,15 +1,20 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
-import { useAccount } from 'wagmi';
+import { useAccount, useChainId, useSwitchChain } from 'wagmi';
+import { baseSepolia } from 'wagmi/chains';
 import { useWalletStore } from '../store/wallet-store';
 import { toast } from 'sonner';
+
+const TARGET_CHAIN_ID = baseSepolia.id; // 84532
 
 /**
  * 인증 및 권한 관리 훅
  */
 export function useAuth() {
   const { authenticated, ready, user, login, logout } = usePrivy();
-  const { address } = useAccount();
+  const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const { switchChain } = useSwitchChain();
   const {
     isAuthenticated,
     userAddress,
@@ -18,6 +23,9 @@ export function useAuth() {
     setUserEmail,
     reset,
   } = useWalletStore();
+
+  // 네트워크 전환 시도 상태 추적
+  const hasAttemptedSwitch = useRef(false);
 
   // 이전 지갑 주소를 추적하여 지갑 전환 감지
   const previousAddressRef = useRef<string | null>(null);
@@ -59,6 +67,38 @@ export function useAuth() {
       isHandlingWalletChange.current = false;
     }
   }, []); // 빈 의존성 배열 - 함수가 절대 재생성되지 않음
+
+  // 네트워크 자동 전환: Base Sepolia가 아니면 전환 요청
+  useEffect(() => {
+    if (!isConnected || !switchChain) return;
+    if (chainId === TARGET_CHAIN_ID) {
+      hasAttemptedSwitch.current = false;
+      return;
+    }
+    if (hasAttemptedSwitch.current) return;
+
+    hasAttemptedSwitch.current = true;
+    console.log(`[Network] Current chain ${chainId}, switching to Base Sepolia (${TARGET_CHAIN_ID})`);
+
+    toast.info('Base Sepolia 네트워크로 전환합니다...', { duration: 3000 });
+
+    switchChain(
+      { chainId: TARGET_CHAIN_ID },
+      {
+        onSuccess: () => {
+          toast.success('Base Sepolia 네트워크로 전환되었습니다!');
+          hasAttemptedSwitch.current = false;
+        },
+        onError: (error) => {
+          console.error('[Network] Switch failed:', error);
+          toast.error('네트워크 전환에 실패했습니다. 지갑에서 직접 Base Sepolia로 전환해주세요.', {
+            duration: 5000,
+          });
+          hasAttemptedSwitch.current = false;
+        },
+      }
+    );
+  }, [isConnected, chainId, switchChain]);
 
   // Privy 인증 상태를 Zustand 스토어와 동기화
   useEffect(() => {
