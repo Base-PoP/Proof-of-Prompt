@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Textarea } from './ui/textarea';
@@ -48,7 +48,12 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sharedPromptIds, setSharedPromptIds] = useState<Set<string>>(new Set());
-  const { pendingPayment, setPendingPayment, status: paymentStatus, setStatus: setPaymentStatus, paymentAuth, setPaymentAuth, lastAuth, setLastAuth, lastAuthAddress, approveForPayment, signForPayment, handlePaymentError } = usePayment(userAddress || undefined);
+  const { pendingPayment, setPendingPayment, status: paymentStatus, setStatus: setPaymentStatus, paymentAuth, setPaymentAuth, lastAuth, setLastAuth, lastAuthAddress, isWalletReady, approveForPayment, signForPayment, isAuthValidForAddress, handlePaymentError } = usePayment(userAddress || undefined);
+
+  // 이번 결제 플로우에서 이미 approve를 완료했는지 추적
+  const hasApprovedInFlowRef = useRef(false);
+  // 결제 재시도 횟수 추적
+  const paymentRetryCountRef = useRef(0);
 
   // 로컬 저장소에 공유된 matchId 기록
   useEffect(() => {
@@ -63,6 +68,40 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
       }
     }
   }, []);
+
+  // walletClient가 준비되면 대기 중인 결제 자동 처리
+  const pendingApproveRef = useRef<{ payment: typeof pendingPayment; prompt: string } | null>(null);
+
+  // handleSubmitWithPrompt의 최신 참조를 유지하는 ref (useEffect 의존성 문제 해결)
+  const handleSubmitWithPromptRef = useRef<((promptText: string, isPaymentRetry: boolean, authPayload?: string | null) => Promise<void>) | null>(null);
+
+  useEffect(() => {
+    // walletClient가 준비되고, 대기 중인 결제가 있으면 자동 처리
+    if (isWalletReady && pendingApproveRef.current && paymentStatus === 'requires_signature') {
+      const { payment, prompt: pendingPrompt } = pendingApproveRef.current;
+      pendingApproveRef.current = null;
+
+      (async () => {
+        setPaymentStatus('authorizing');
+        try {
+          await approveForPayment(payment);
+          hasApprovedInFlowRef.current = true;
+          const authPayloadSigned = await signForPayment(payment);
+          setPaymentAuth(authPayloadSigned);
+          setLastAuth(authPayloadSigned);
+          setPendingPayment(null);
+          // ref를 통해 최신 함수 호출
+          await handleSubmitWithPromptRef.current?.(pendingPrompt, true, authPayloadSigned);
+        } catch (err) {
+          console.error('Auto approve failed:', err);
+          setError(err instanceof Error ? err.message : '결제 승인 실패');
+          setPaymentStatus('requires_signature');
+          hasApprovedInFlowRef.current = false;
+          paymentRetryCountRef.current = 0;
+        }
+      })();
+    }
+  }, [isWalletReady, paymentStatus, approveForPayment, signForPayment, setPaymentAuth, setLastAuth, setPendingPayment, setPaymentStatus]);
 
   // Load chat from history if initialChatId is provided
   useEffect(() => {
@@ -130,10 +169,12 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
     setIsLoading(true);
     setError(null);
     setPaymentStatus('processing');
-    
-    // 결제 재시도가 아닐 때만 pendingPayment 초기화
+
+    // 결제 재시도가 아닐 때만 상태 초기화
     if (!isPaymentRetry) {
       setPendingPayment(null);
+      hasApprovedInFlowRef.current = false;
+      paymentRetryCountRef.current = 0;
     }
 
     const currentPrompt = promptText.trim();
@@ -158,11 +199,17 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
         const ts = parseAuthTs(auth);
         return ts > 0 && Date.now() - ts < AUTH_TTL_MS;
       };
+      // auth가 현재 지갑 주소와 일치하고 유효한지 확인
+      const isValidAuth = (auth?: string | null) => {
+        return isFresh(auth) && isAuthValidForAddress(auth, userAddress);
+      };
+      // authPayload도 주소 검증 필요 (다른 지갑의 auth 사용 방지)
+      const validAuthPayload = authPayload && isAuthValidForAddress(authPayload, userAddress) ? authPayload : null;
       const authForRequest =
-        authPayload ??
-        (isFresh(paymentAuth)
+        validAuthPayload ??
+        (isValidAuth(paymentAuth)
           ? paymentAuth
-          : isFresh(lastAuth)
+          : isValidAuth(lastAuth)
             ? lastAuth
             : null);
       await arenaApi.createChatStream(
@@ -202,26 +249,78 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
         userAddress || undefined
       );
     } catch (err: unknown) {
+      // 에러에서 직접 payment 정보 추출 (상태 업데이트는 비동기이므로)
+      const paymentErr = err as { name?: string; payment?: typeof pendingPayment; allowanceRequired?: boolean; reason?: string };
+      const errorPayment = paymentErr?.payment ? { ...paymentErr.payment, prompt: currentPrompt, allowanceRequired: paymentErr.allowanceRequired, reason: paymentErr.reason } : null;
+      const isAllowanceError = paymentErr?.allowanceRequired === true;
+
       const handled = handlePaymentError(err, currentPrompt, setPrompt, setCurrentMessage, setError, isPaymentRetry);
-      if (handled) {
-        // 자동 승인 후 재시도 시도
-        if (userAddress && pendingPayment) {
-          try {
-            setPaymentStatus('authorizing');
-            await approveForPayment(pendingPayment);
-            const authPayloadSigned = await signForPayment(pendingPayment);
-            setPaymentAuth(authPayloadSigned);
-            setLastAuth(authPayloadSigned);
-            setPendingPayment(null);
-            await handleSubmitWithPrompt(currentPrompt, true, authPayloadSigned);
-            return;
-          } catch (signErr) {
-            console.error('Auto sign failed:', signErr);
-            setPaymentStatus('requires_signature');
-            setIsLoading(false);
-            return;
+      if (handled && errorPayment) {
+        // 자동 승인 후 재시도 시도 (에러에서 추출한 payment 사용)
+        if (userAddress) {
+          if (isWalletReady) {
+            // walletClient가 준비되어 있으면 바로 처리
+            try {
+              setPaymentStatus('authorizing');
+
+              // 이미 approve를 완료한 상태에서 allowanceRequired 에러가 오면
+              // 블록체인 동기화 지연 문제일 수 있으므로 대기 후 재시도
+              if (hasApprovedInFlowRef.current && isAllowanceError) {
+                paymentRetryCountRef.current += 1;
+                const MAX_RETRIES = 3;
+
+                if (paymentRetryCountRef.current > MAX_RETRIES) {
+                  console.error('Max payment retries exceeded');
+                  setError('결제 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+                  setPaymentStatus('idle');
+                  setIsLoading(false);
+                  hasApprovedInFlowRef.current = false;
+                  paymentRetryCountRef.current = 0;
+                  return;
+                }
+
+                console.log(`Allowance sync delay detected. Waiting before retry (${paymentRetryCountRef.current}/${MAX_RETRIES})...`);
+                // 블록체인 동기화를 위한 대기 (지수 백오프: 2초, 4초, 8초)
+                const delayMs = Math.min(2000 * Math.pow(2, paymentRetryCountRef.current - 1), 8000);
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+
+                // 기존 서명으로 재시도 (approve 없이)
+                await handleSubmitWithPrompt(currentPrompt, true, authPayload);
+                return;
+              }
+
+              // 첫 번째 approve 시도
+              await approveForPayment(errorPayment);
+              hasApprovedInFlowRef.current = true;
+
+              const authPayloadSigned = await signForPayment(errorPayment);
+              setPaymentAuth(authPayloadSigned);
+              setLastAuth(authPayloadSigned);
+              setPendingPayment(null);
+              await handleSubmitWithPrompt(currentPrompt, true, authPayloadSigned);
+              return;
+            } catch (signErr) {
+              console.error('Auto sign failed:', signErr);
+              setError(signErr instanceof Error ? signErr.message : '결제 승인 실패');
+              setPaymentStatus('requires_signature');
+              setIsLoading(false);
+              hasApprovedInFlowRef.current = false;
+              paymentRetryCountRef.current = 0;
+              return;
+            }
+          } else {
+            // walletClient가 준비되지 않았으면 대기열에 추가 (준비되면 자동 처리)
+            console.log('Wallet not ready, queuing payment for auto-approval...');
+            pendingApproveRef.current = { payment: errorPayment, prompt: currentPrompt };
           }
         }
+        setIsLoading(false);
+        setPaymentStatus('requires_signature');
+        setPrompt(currentPrompt);
+        setCurrentMessage(null);
+        setLastAuth(null);
+      } else if (handled) {
+        // payment 정보가 없는 경우
         setIsLoading(false);
         setPaymentStatus('requires_signature');
         setPrompt(currentPrompt);
@@ -238,7 +337,12 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approveForPayment, handlePaymentError, lastAuth, lastAuthAddress, paymentAuth, pendingPayment, requireAuth, setLastAuth, setPaymentAuth, setPaymentStatus, setPendingPayment, userAddress, onChatCreated]);
+  }, [approveForPayment, handlePaymentError, isWalletReady, lastAuth, lastAuthAddress, paymentAuth, pendingPayment, requireAuth, setLastAuth, setPaymentAuth, setPaymentStatus, setPendingPayment, userAddress, onChatCreated]);
+
+  // handleSubmitWithPrompt ref 업데이트 (useEffect 의존성 문제 해결)
+  useEffect(() => {
+    handleSubmitWithPromptRef.current = handleSubmitWithPrompt;
+  }, [handleSubmitWithPrompt]);
 
   // 기존 handleSubmit은 현재 prompt 상태를 사용
   const handleSubmit = useCallback(async () => {
@@ -250,15 +354,33 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
     if (!pendingPayment || !pendingPayment.prompt) return;
     const pendingPrompt = pendingPayment.prompt;
 
+    // 수동 승인 버튼 클릭 시 상태 초기화
+    hasApprovedInFlowRef.current = false;
+    paymentRetryCountRef.current = 0;
+
+    if (!isWalletReady) {
+      // walletClient가 준비되지 않았으면 대기열에 추가 (준비되면 자동 처리)
+      console.log('Wallet not ready, queuing payment for auto-approval...');
+      pendingApproveRef.current = { payment: pendingPayment, prompt: pendingPrompt };
+      setPaymentStatus('authorizing'); // 로딩 상태 표시
+      return;
+    }
+
     requireAuth(async () => {
       setPaymentStatus('authorizing');
       try {
         await approveForPayment(pendingPayment);
+        hasApprovedInFlowRef.current = true;
         const authPayloadSigned = await signForPayment(pendingPayment);
         setPaymentAuth(authPayloadSigned);
         setLastAuth(authPayloadSigned);
         setPendingPayment(null);
         await handleSubmitWithPrompt(pendingPrompt, true, authPayloadSigned);
+      } catch (err) {
+        console.error('Approve failed:', err);
+        setError(err instanceof Error ? err.message : '결제 승인 실패');
+        hasApprovedInFlowRef.current = false;
+        paymentRetryCountRef.current = 0;
       } finally {
         setPaymentStatus('idle');
       }

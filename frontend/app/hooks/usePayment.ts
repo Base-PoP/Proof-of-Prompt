@@ -26,12 +26,14 @@ export interface PaymentState {
   lastAuth: string | null;
   lastAuthAddress: string | null;
   status: PaymentStatus;
+  isWalletReady: boolean;  // walletClient 준비 상태 추가
   setStatus: (s: PaymentStatus) => void;
   setPendingPayment: (p: PaymentState['pendingPayment']) => void;
   setPaymentAuth: (v: string | null) => void;
   setLastAuth: (v: string | null) => void;
   approveForPayment: (payment: PaymentState['pendingPayment']) => Promise<string>;
   signForPayment: (payment: PaymentState['pendingPayment']) => Promise<string>;
+  isAuthValidForAddress: (auth?: string | null, address?: string | null) => boolean;
   handlePaymentError: (
     err: unknown,
     prompt: string,
@@ -49,13 +51,11 @@ export function usePayment(currentAddress?: string): PaymentState {
     if (!saved || saved === 'null' || saved === 'undefined') return null;
     try {
       const parsed = JSON.parse(saved) as { address?: string; auth?: string };
+      // 주소가 일치할 때만 auth 반환 (다른 지갑의 auth 사용 방지)
       if (parsed?.auth && parsed?.address && parsed.address.toLowerCase() === currentAddress?.toLowerCase()) {
         return parsed as { address: string; auth: string };
       }
-      // 주소 불일치 시에도 auth는 반환해 동일 서명 재사용을 허용
-      if (parsed?.auth) {
-        return { address: parsed.address, auth: parsed.auth };
-      }
+      // 주소 불일치 시 auth 반환하지 않음 (Payment address mismatch 방지)
       return null;
     } catch {
       return null;
@@ -73,6 +73,25 @@ export function usePayment(currentAddress?: string): PaymentState {
     } catch {
       return false;
     }
+  };
+
+  // auth payload에서 서명된 주소 추출
+  const getAuthAddress = (auth?: string | null): string | null => {
+    if (!auth) return null;
+    try {
+      const raw = typeof window === 'undefined' ? Buffer.from(auth, 'base64').toString('utf8') : atob(auth);
+      const parsed = JSON.parse(raw);
+      return parsed?.address?.toLowerCase?.() || null;
+    } catch {
+      return null;
+    }
+  };
+
+  // auth가 현재 지갑 주소와 일치하는지 확인
+  const isAuthValidForAddress = (auth?: string | null, address?: string | null): boolean => {
+    if (!auth || !address) return false;
+    const authAddr = getAuthAddress(auth);
+    return authAddr === address.toLowerCase();
   };
 
   const stored = loadStoredAuth();
@@ -95,8 +114,13 @@ export function usePayment(currentAddress?: string): PaymentState {
     // 주소가 존재하고, 이전 주소도 존재하며 서로 다를 때만 무효화
     if (prev && curr && prev !== curr) {
       prevAddressRef.current = currentAddress;
-      // 주소가 바뀌더라도 서명 세션은 유지 (멀티 탭 동일 주소 지원)
+      // 지갑 변경 시 이전 서명 완전히 무효화 (Payment address mismatch 방지)
+      setPaymentAuth(null);
+      setLastAuthState(null);
       setLastAuthAddress(null);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('lastPaymentAuth');
+      }
     } else {
       prevAddressRef.current = currentAddress;
     }
@@ -118,9 +142,9 @@ export function usePayment(currentAddress?: string): PaymentState {
   };
 
   const approveForPayment = async (payment: PaymentState['pendingPayment']) => {
-    if (!walletClient) throw new Error('Wallet not connected');
-    if (!publicClient) throw new Error('RPC client unavailable');
-    if (!payment?.pay_to_address) throw new Error('pay_to_address missing');
+    if (!walletClient) throw new Error('지갑이 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요.');
+    if (!publicClient) throw new Error('RPC 클라이언트를 사용할 수 없습니다.');
+    if (!payment?.pay_to_address) throw new Error('결제 주소가 없습니다.');
 
     const txHash = await walletClient.writeContract({
       address: (payment.token || USDC_ADDRESS) as `0x${string}`,
@@ -147,8 +171,8 @@ export function usePayment(currentAddress?: string): PaymentState {
   };
 
   const signForPayment = async (payment: PaymentState['pendingPayment']) => {
-    if (!payment) throw new Error('No payment to sign');
-    if (!walletClient) throw new Error('Wallet not connected');
+    if (!payment) throw new Error('서명할 결제 정보가 없습니다.');
+    if (!walletClient) throw new Error('지갑이 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요.');
     const address = walletClient.account.address;
     const price = payment.price || (Number(payment.amount || '0') / 1e6).toFixed(2);
     const network = payment.network || 'base-sepolia';
@@ -203,12 +227,14 @@ export function usePayment(currentAddress?: string): PaymentState {
     lastAuth,
     lastAuthAddress,
     status,
+    isWalletReady: !!walletClient && !!publicClient,
     setStatus,
     setPendingPayment,
     setPaymentAuth,
     setLastAuth,
     approveForPayment,
     signForPayment,
+    isAuthValidForAddress,
     handlePaymentError,
   };
 }

@@ -23,7 +23,18 @@ export function useAuth() {
   const previousAddressRef = useRef<string | null>(null);
   const isHandlingWalletChange = useRef(false);
 
-  // 지갑 변경 처리 함수
+  // 함수 참조를 안정적으로 유지 (무한 루프 방지)
+  const logoutRef = useRef(logout);
+  const loginRef = useRef(login);
+  const resetRef = useRef(reset);
+
+  useEffect(() => {
+    logoutRef.current = logout;
+    loginRef.current = login;
+    resetRef.current = reset;
+  }, [logout, login, reset]);
+
+  // 지갑 변경 처리 함수 (의존성 없이 안정적)
   const handleWalletChange = useCallback(async (newAddress: string, oldAddress: string) => {
     if (isHandlingWalletChange.current) return;
     isHandlingWalletChange.current = true;
@@ -32,14 +43,14 @@ export function useAuth() {
 
     // 기존 세션 로그아웃
     try {
-      await logout();
-      reset();
+      await logoutRef.current();
+      resetRef.current();
 
       // 새 지갑으로 로그인 요청
       toast.info('지갑이 변경되었습니다. 다시 연결해주세요.', {
         action: {
           label: '연결하기',
-          onClick: () => login(),
+          onClick: () => loginRef.current(),
         },
       });
     } catch (error) {
@@ -47,7 +58,7 @@ export function useAuth() {
     } finally {
       isHandlingWalletChange.current = false;
     }
-  }, [logout, reset, login]);
+  }, []); // 빈 의존성 배열 - 함수가 절대 재생성되지 않음
 
   // Privy 인증 상태를 Zustand 스토어와 동기화
   useEffect(() => {
