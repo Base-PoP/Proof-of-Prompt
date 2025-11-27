@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Textarea } from './ui/textarea';
@@ -63,6 +63,33 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
       }
     }
   }, []);
+
+  // walletClient가 준비되면 대기 중인 결제 자동 처리
+  const pendingApproveRef = useRef<{ payment: typeof pendingPayment; prompt: string } | null>(null);
+
+  useEffect(() => {
+    // walletClient가 준비되고, 대기 중인 결제가 있으면 자동 처리
+    if (isWalletReady && pendingApproveRef.current && paymentStatus === 'requires_signature') {
+      const { payment, prompt: pendingPrompt } = pendingApproveRef.current;
+      pendingApproveRef.current = null;
+
+      (async () => {
+        setPaymentStatus('authorizing');
+        try {
+          await approveForPayment(payment);
+          const authPayloadSigned = await signForPayment(payment);
+          setPaymentAuth(authPayloadSigned);
+          setLastAuth(authPayloadSigned);
+          setPendingPayment(null);
+          await handleSubmitWithPrompt(pendingPrompt, true, authPayloadSigned);
+        } catch (err) {
+          console.error('Auto approve failed:', err);
+          setError(err instanceof Error ? err.message : '결제 승인 실패');
+          setPaymentStatus('requires_signature');
+        }
+      })();
+    }
+  }, [isWalletReady, paymentStatus, approveForPayment, signForPayment, setPaymentAuth, setLastAuth, setPendingPayment, setPaymentStatus]);
 
   // Load chat from history if initialChatId is provided
   useEffect(() => {
@@ -204,23 +231,30 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
     } catch (err: unknown) {
       const handled = handlePaymentError(err, currentPrompt, setPrompt, setCurrentMessage, setError, isPaymentRetry);
       if (handled) {
-        // 자동 승인 후 재시도 시도 (walletClient가 준비되었을 때만)
-        if (userAddress && pendingPayment && isWalletReady) {
-          try {
-            setPaymentStatus('authorizing');
-            await approveForPayment(pendingPayment);
-            const authPayloadSigned = await signForPayment(pendingPayment);
-            setPaymentAuth(authPayloadSigned);
-            setLastAuth(authPayloadSigned);
-            setPendingPayment(null);
-            await handleSubmitWithPrompt(currentPrompt, true, authPayloadSigned);
-            return;
-          } catch (signErr) {
-            console.error('Auto sign failed:', signErr);
-            setError(signErr instanceof Error ? signErr.message : '결제 승인 실패');
-            setPaymentStatus('requires_signature');
-            setIsLoading(false);
-            return;
+        // 자동 승인 후 재시도 시도
+        if (userAddress && pendingPayment) {
+          if (isWalletReady) {
+            // walletClient가 준비되어 있으면 바로 처리
+            try {
+              setPaymentStatus('authorizing');
+              await approveForPayment(pendingPayment);
+              const authPayloadSigned = await signForPayment(pendingPayment);
+              setPaymentAuth(authPayloadSigned);
+              setLastAuth(authPayloadSigned);
+              setPendingPayment(null);
+              await handleSubmitWithPrompt(currentPrompt, true, authPayloadSigned);
+              return;
+            } catch (signErr) {
+              console.error('Auto sign failed:', signErr);
+              setError(signErr instanceof Error ? signErr.message : '결제 승인 실패');
+              setPaymentStatus('requires_signature');
+              setIsLoading(false);
+              return;
+            }
+          } else {
+            // walletClient가 준비되지 않았으면 대기열에 추가 (준비되면 자동 처리)
+            console.log('Wallet not ready, queuing payment for auto-approval...');
+            pendingApproveRef.current = { payment: pendingPayment, prompt: currentPrompt };
           }
         }
         setIsLoading(false);
@@ -252,7 +286,10 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
     const pendingPrompt = pendingPayment.prompt;
 
     if (!isWalletReady) {
-      setError('지갑이 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요.');
+      // walletClient가 준비되지 않았으면 대기열에 추가 (준비되면 자동 처리)
+      console.log('Wallet not ready, queuing payment for auto-approval...');
+      pendingApproveRef.current = { payment: pendingPayment, prompt: pendingPrompt };
+      setPaymentStatus('authorizing'); // 로딩 상태 표시
       return;
     }
 
