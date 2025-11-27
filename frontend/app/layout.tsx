@@ -16,7 +16,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Base Battle - AI Model Comparison",
+  title: "Proof of Prompt - AI Model Comparison",
   description: "Compare AI models head-to-head and vote for the best responses",
 };
 

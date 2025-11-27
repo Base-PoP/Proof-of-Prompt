@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useAccount } from 'wagmi';
 import { useWalletStore } from '../store/wallet-store';
@@ -19,6 +19,47 @@ export function useAuth() {
     reset,
   } = useWalletStore();
 
+  // 이전 지갑 주소를 추적하여 지갑 전환 감지
+  const previousAddressRef = useRef<string | null>(null);
+  const isHandlingWalletChange = useRef(false);
+
+  // 함수 참조를 안정적으로 유지 (무한 루프 방지)
+  const logoutRef = useRef(logout);
+  const loginRef = useRef(login);
+  const resetRef = useRef(reset);
+
+  useEffect(() => {
+    logoutRef.current = logout;
+    loginRef.current = login;
+    resetRef.current = reset;
+  }, [logout, login, reset]);
+
+  // 지갑 변경 처리 함수 (의존성 없이 안정적)
+  const handleWalletChange = useCallback(async (newAddress: string, oldAddress: string) => {
+    if (isHandlingWalletChange.current) return;
+    isHandlingWalletChange.current = true;
+
+    console.log(`Wallet changed from ${oldAddress} to ${newAddress}`);
+
+    // 기존 세션 로그아웃
+    try {
+      await logoutRef.current();
+      resetRef.current();
+
+      // 새 지갑으로 로그인 요청
+      toast.info('지갑이 변경되었습니다. 다시 연결해주세요.', {
+        action: {
+          label: '연결하기',
+          onClick: () => loginRef.current(),
+        },
+      });
+    } catch (error) {
+      console.error('Failed to handle wallet change:', error);
+    } finally {
+      isHandlingWalletChange.current = false;
+    }
+  }, []); // 빈 의존성 배열 - 함수가 절대 재생성되지 않음
+
   // Privy 인증 상태를 Zustand 스토어와 동기화
   useEffect(() => {
     let walletAddress = address || user?.wallet?.address;
@@ -38,6 +79,20 @@ export function useAuth() {
       }
     }
 
+    // 지갑 주소 변경 감지 및 처리
+    if (walletAddress && previousAddressRef.current &&
+        walletAddress.toLowerCase() !== previousAddressRef.current.toLowerCase() &&
+        authenticated && !isHandlingWalletChange.current) {
+      // 지갑이 변경되었고, 이전에 인증된 상태였다면
+      handleWalletChange(walletAddress, previousAddressRef.current);
+      return;
+    }
+
+    // 현재 주소 저장 (첫 연결 시에만)
+    if (walletAddress && authenticated) {
+      previousAddressRef.current = walletAddress;
+    }
+
     if (walletAddress) {
       setAuthenticated(true);
       setUserAddress(walletAddress);
@@ -45,9 +100,10 @@ export function useAuth() {
     } else if (!authenticated && ready) {
       // Only reset if we are sure we are not authenticated and Privy is ready
       // And we couldn't find any address in localStorage
+      previousAddressRef.current = null;
       reset();
     }
-  }, [authenticated, ready, address, user, setAuthenticated, setUserAddress, setUserEmail, reset]);
+  }, [authenticated, ready, address, user, setAuthenticated, setUserAddress, setUserEmail, reset, handleWalletChange]);
 
   /**
    * 권한이 필요한 작업 실행

@@ -11,4 +11,4 @@ export const CATEGORY_COLORS: Record<Category, string> = {
 };
 
 export const WEEKLY_REWARD_INTERVAL_MS = (Number(process.env.NEXT_PUBLIC_WEEKLY_REWARD_INTERVAL_SEC) || 60) * 1000;
-export const WEEKLY_REWARD_LABEL = '주간 보상 분배까지 남은 시간';
+export const WEEKLY_REWARD_LABEL = '일간 보상 분배까지 남은 시간';
