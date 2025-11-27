@@ -4,7 +4,8 @@
       "Bash(tree:*)",
       "Bash(pnpm run build:*)",
       "Bash(cat:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "WebFetch(domain:dns.google)"
     ],
     "deny": [],
     "ask": []
