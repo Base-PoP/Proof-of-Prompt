@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
-import { useAccount, useSwitchChain } from 'wagmi';
+import { useAccount } from 'wagmi';
 import { baseSepolia } from 'wagmi/chains';
 import { useWalletStore } from '../store/wallet-store';
 import { toast } from 'sonner';
@@ -25,7 +25,7 @@ const BASE_SEPOLIA_CHAIN = {
 async function getWalletChainId(): Promise<number | null> {
   if (typeof window === 'undefined' || !window.ethereum) return null;
   try {
-    const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
+    const chainIdHex = (await window.ethereum.request({ method: 'eth_chainId' })) as string;
     return parseInt(chainIdHex, 16);
   } catch {
     return null;
@@ -73,7 +73,6 @@ async function addAndSwitchNetwork(): Promise<boolean> {
 export function useAuth() {
   const { authenticated, ready, user, login, logout } = usePrivy();
   const { address, isConnected } = useAccount();
-  const { switchChain } = useSwitchChain();
   const {
     isAuthenticated,
     userAddress,
