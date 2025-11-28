@@ -142,7 +142,8 @@ export function useAuth() {
     getWalletChainId().then(setWalletChainId);
 
     // 네트워크 변경 이벤트 리스닝
-    const handleChainChanged = (chainIdHex: string) => {
+    const handleChainChanged = (data: unknown) => {
+      const chainIdHex = data as string;
       const newChainId = parseInt(chainIdHex, 16);
       console.log(`[Network] Chain changed to ${newChainId}`);
       setWalletChainId(newChainId);
