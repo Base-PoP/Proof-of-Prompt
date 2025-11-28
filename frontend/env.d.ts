@@ -5,3 +5,13 @@ declare namespace NodeJS {
     NEXT_PUBLIC_ENV?: string;
   }
 }
+
+// MetaMask/Ethereum Provider 타입
+interface Window {
+  ethereum?: {
+    request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+    on: (event: string, callback: (data: unknown) => void) => void;
+    removeListener: (event: string, callback: (data: unknown) => void) => void;
+    isMetaMask?: boolean;
+  };
+}
