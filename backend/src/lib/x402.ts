@@ -10,7 +10,7 @@ import { processAutoPayment } from './payment';
 
 export interface X402Config {
   price: string; // 가격 (USD 단위, 예: "0.01")
-  network: 'base' | 'base-sepolia';
+  network: 'base-sepolia'; // Base Sepolia만 지원
   description?: string;
   currency?: string; // 기본값: "USDC"
 }
@@ -21,22 +21,18 @@ export interface PaymentPayload {
   pay_to_address: string;
   amount: string;
   price: string; // USD 단위
-  network: 'base' | 'base-sepolia';
+  network: 'base-sepolia';
   description?: string;
   timestamp: number;
   facilitator_url?: string;
 }
 
+// Base Sepolia만 지원
 const CHAIN_CONFIG = {
   'base-sepolia': {
     chainId: 84532,
     rpcUrl: 'https://sepolia.base.org',
-    usdc: '0xA449bc031fA0b815cA14fAFD0c5EdB75ccD9c80f',
-  },
-  'base': {
-    chainId: 8453,
-    rpcUrl: 'https://mainnet.base.org',
-    usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    usdc: '0x13a332e3E45a2A0D96B66f79e5b34694Dc288b46', // Base Sepolia USDC (테스트용)
   },
 };
 

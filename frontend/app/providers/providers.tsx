@@ -5,7 +5,7 @@ import { WagmiProvider } from '@privy-io/wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, useMemo, type ReactNode } from 'react';
 import { http, createConfig } from 'wagmi';
-import { base, baseSepolia } from 'wagmi/chains';
+import { baseSepolia } from 'wagmi/chains';
 
 /**
  * 애플리케이션 Provider 통합
@@ -25,13 +25,12 @@ export function Providers({ children }: { children: ReactNode }) {
       })
   );
 
-  // Wagmi 설정
+  // Wagmi 설정 (Base Sepolia만 사용)
   const wagmiConfig = useMemo(
     () =>
       createConfig({
-        chains: [base, baseSepolia],
+        chains: [baseSepolia],
         transports: {
-          [base.id]: http(),
           [baseSepolia.id]: http(),
         },
       }),
@@ -55,7 +54,7 @@ export function Providers({ children }: { children: ReactNode }) {
         walletList: ['metamask', 'coinbase_wallet'],
         showWalletList: true,
       },
-      supportedChains: [base, baseSepolia],
+      supportedChains: [baseSepolia],
       defaultChain: baseSepolia, // Base Sepolia Testnet 사용
       legal: {
         termsAndConditionsUrl: 'https://your-domain.com/terms',

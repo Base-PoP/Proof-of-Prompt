@@ -1,13 +1,21 @@
 import { prisma } from './prisma';
 import { ethers } from 'ethers';
 import { fetchPricePerChat } from './payment-treasury';
+import { env } from '../config/env';
 
 const COST_PER_CHAT = 100000; // 0.1 USDC (6 decimals)
-const PAYMENT_TOKEN = process.env.USDC_ADDRESS || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
-const PAY_TO_ADDRESS = process.env.PAY_TO_ADDRESS || '0x5e4D581D318ef0ff9e525529b40c3400457Fdbf6';
+const PAYMENT_TOKEN = env.usdcAddress;
+const PAY_TO_ADDRESS = env.payToAddress;
 const TREASURY_POOL_ADDRESS = process.env.TREASURY_POOL_ADDRESS || '';
 const TREASURY_POOL_RPC_URL = process.env.TREASURY_POOL_RPC_URL || 'https://sepolia.base.org';
-const CHAIN_ID = Number(process.env.CHAIN_ID || '84532');
+const CHAIN_ID = Number(env.chainId);
+
+// Debug: 환경변수 로드 확인
+console.log('[PAYMENT CONFIG] Loaded:', {
+  PAYMENT_TOKEN,
+  PAY_TO_ADDRESS,
+  CHAIN_ID,
+});
 
 // USDC ABI (필요한 함수들만)
 const USDC_ABI = [

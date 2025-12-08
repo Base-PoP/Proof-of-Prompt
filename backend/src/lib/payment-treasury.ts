@@ -3,10 +3,16 @@ import { env } from "../config/env";
 
 const PAYMENT_TREASURY_ABI = [
   "function pricePerChat() view returns (uint256)",
+  "function acceptedToken() view returns (address)",
   "function payWithAllowance(address payer, uint256 amount) external",
   "function payWithPermit(address payer, uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external",
   "function claimAchievement(uint256 achievementId, address recipient, uint256 amount, bytes32 nonce, bytes calldata signature) external",
   "function claimWeekly(uint256 week, uint8 rank, address recipient, uint256 amount, bytes32 nonce, bytes calldata signature) external",
+];
+
+const ERC20_ABI = [
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function balanceOf(address account) view returns (uint256)",
 ];
 
 const getProvider = () => {
@@ -56,6 +62,28 @@ export async function chargePaymentTreasury(
   const contract = getContract(signer);
 
   const price: bigint = await contract.pricePerChat();
+
+  // Debug: 컨트랙트의 acceptedToken과 사용자 allowance 조회
+  try {
+    const acceptedToken: string = await contract.acceptedToken();
+    const tokenContract = new ethers.Contract(acceptedToken, ERC20_ABI, provider);
+    const allowance: bigint = await tokenContract.allowance(payer, env.payToAddress);
+    const balance: bigint = await tokenContract.balanceOf(payer);
+
+    console.log("[PAYMENT DEBUG]", {
+      payer,
+      contractAcceptedToken: acceptedToken,
+      expectedToken: env.usdcAddress,
+      tokenMatch: acceptedToken.toLowerCase() === env.usdcAddress.toLowerCase(),
+      userAllowance: allowance.toString(),
+      userBalance: balance.toString(),
+      requiredAmount: price.toString(),
+      hasEnoughAllowance: allowance >= price,
+      hasEnoughBalance: balance >= price,
+    });
+  } catch (debugErr) {
+    console.error("[PAYMENT DEBUG ERROR]", debugErr);
+  }
 
   // permit 우선 사용
   if (permit) {

@@ -263,9 +263,9 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
             try {
               setPaymentStatus('authorizing');
 
-              // 이미 approve를 완료한 상태에서 allowanceRequired 에러가 오면
-              // 블록체인 동기화 지연 문제일 수 있으므로 대기 후 재시도
-              if (hasApprovedInFlowRef.current && isAllowanceError) {
+              // 이미 approve/서명을 완료한 상태에서 다시 402가 오면
+              // 기존 서명으로 재시도 (새 서명 요청하지 않음)
+              if (hasApprovedInFlowRef.current && authPayload) {
                 paymentRetryCountRef.current += 1;
                 const MAX_RETRIES = 3;
 
@@ -279,12 +279,18 @@ export function HomePage({ onBack, initialChatId, initialChat, onChatCreated, ch
                   return;
                 }
 
-                console.log(`Allowance sync delay detected. Waiting before retry (${paymentRetryCountRef.current}/${MAX_RETRIES})...`);
-                // 블록체인 동기화를 위한 대기 (지수 백오프: 2초, 4초, 8초)
-                const delayMs = Math.min(2000 * Math.pow(2, paymentRetryCountRef.current - 1), 8000);
-                await new Promise(resolve => setTimeout(resolve, delayMs));
+                // allowanceRequired 에러인 경우 블록체인 동기화를 위한 대기
+                if (isAllowanceError) {
+                  console.log(`Allowance sync delay detected. Waiting before retry (${paymentRetryCountRef.current}/${MAX_RETRIES})...`);
+                  const delayMs = Math.min(2000 * Math.pow(2, paymentRetryCountRef.current - 1), 8000);
+                  await new Promise(resolve => setTimeout(resolve, delayMs));
+                } else {
+                  // 다른 에러인 경우에도 짧은 대기 후 재시도
+                  console.log(`Payment retry (${paymentRetryCountRef.current}/${MAX_RETRIES})...`);
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                }
 
-                // 기존 서명으로 재시도 (approve 없이)
+                // 기존 서명으로 재시도 (새 서명 요청하지 않음)
                 await handleSubmitWithPrompt(currentPrompt, true, authPayload);
                 return;
               }

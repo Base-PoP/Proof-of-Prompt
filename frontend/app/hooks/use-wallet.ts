@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useAccount, useChainId, useSwitchChain } from 'wagmi';
 import { useWalletStore } from '@/app/store/wallet-store';
-import { base, baseSepolia } from 'viem/chains';
+import { baseSepolia } from 'viem/chains';
 
 /**
  * 지갑 관련 기능을 통합한 커스텀 훅
@@ -33,20 +33,20 @@ export function useWallet() {
     setChainId(chainId || null);
   }, [authenticated, address, user, chainId, setAuthenticated, setUserAddress, setUserEmail, setChainId]);
 
-  // Base Mainnet으로 전환
-  const switchToBase = async () => {
+  // Base Sepolia로 전환
+  const switchToBaseSepolia = async () => {
     try {
       setConnecting(true);
-      await switchChain({ chainId: base.id });
+      await switchChain({ chainId: baseSepolia.id });
     } catch (error) {
-      console.error('Failed to switch to Base Mainnet', error);
+      console.error('Failed to switch to Base Sepolia', error);
     } finally {
       setConnecting(false);
     }
   };
 
-  // 현재 네트워크가 Base Mainnet 또는 Base Sepolia인지 확인
-  const isCorrectNetwork = chainId === base.id || chainId === baseSepolia.id;
+  // 현재 네트워크가 Base Sepolia인지 확인
+  const isCorrectNetwork = chainId === baseSepolia.id;
 
   return {
     isAuthenticated: authenticated,
@@ -57,7 +57,7 @@ export function useWallet() {
     login,
     logout,
     ready,
-    switchToBase,
+    switchToBaseSepolia,
     isCorrectNetwork,
     isConnecting: useWalletStore.getState().isConnecting,
     isDisconnecting: useWalletStore.getState().isDisconnecting,

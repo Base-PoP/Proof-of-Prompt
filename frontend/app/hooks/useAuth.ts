@@ -1,15 +1,78 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useAccount } from 'wagmi';
+import { baseSepolia } from 'wagmi/chains';
 import { useWalletStore } from '../store/wallet-store';
 import { toast } from 'sonner';
+
+const TARGET_CHAIN_ID = baseSepolia.id; // 84532
+const TARGET_CHAIN_ID_HEX = `0x${TARGET_CHAIN_ID.toString(16)}`; // 0x14a34
+
+// Base Sepolia 네트워크 정보
+const BASE_SEPOLIA_CHAIN = {
+  chainId: TARGET_CHAIN_ID_HEX,
+  chainName: 'Base Sepolia',
+  nativeCurrency: {
+    name: 'Ethereum',
+    symbol: 'ETH',
+    decimals: 18,
+  },
+  rpcUrls: ['https://sepolia.base.org'],
+  blockExplorerUrls: ['https://sepolia.basescan.org'],
+};
+
+// 지갑에서 직접 현재 체인 ID 가져오기
+async function getWalletChainId(): Promise<number | null> {
+  if (typeof window === 'undefined' || !window.ethereum) return null;
+  try {
+    const chainIdHex = (await window.ethereum.request({ method: 'eth_chainId' })) as string;
+    return parseInt(chainIdHex, 16);
+  } catch {
+    return null;
+  }
+}
+
+// 지갑에 네트워크 추가 및 전환
+async function addAndSwitchNetwork(): Promise<boolean> {
+  if (typeof window === 'undefined' || !window.ethereum) return false;
+
+  try {
+    // 먼저 네트워크 전환 시도
+    await window.ethereum.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: TARGET_CHAIN_ID_HEX }],
+    });
+    return true;
+  } catch (switchError: unknown) {
+    const error = switchError as { code?: number };
+    // 4902: 네트워크가 없음 - 추가 필요
+    if (error.code === 4902) {
+      try {
+        await window.ethereum.request({
+          method: 'wallet_addEthereumChain',
+          params: [BASE_SEPOLIA_CHAIN],
+        });
+        return true;
+      } catch (addError) {
+        console.error('[Network] Failed to add network:', addError);
+        return false;
+      }
+    }
+    // 4001: 사용자가 거부
+    if (error.code === 4001) {
+      return false;
+    }
+    console.error('[Network] Switch error:', switchError);
+    return false;
+  }
+}
 
 /**
  * 인증 및 권한 관리 훅
  */
 export function useAuth() {
   const { authenticated, ready, user, login, logout } = usePrivy();
-  const { address } = useAccount();
+  const { address, isConnected } = useAccount();
   const {
     isAuthenticated,
     userAddress,
@@ -18,6 +81,13 @@ export function useAuth() {
     setUserEmail,
     reset,
   } = useWalletStore();
+
+  // 현재 지갑의 실제 체인 ID (wagmi가 아닌 지갑에서 직접)
+  const [walletChainId, setWalletChainId] = useState<number | null>(null);
+
+  // 네트워크 전환 시도 상태 추적
+  const hasAttemptedSwitch = useRef(false);
+  const isSwitching = useRef(false);
 
   // 이전 지갑 주소를 추적하여 지갑 전환 감지
   const previousAddressRef = useRef<string | null>(null);
@@ -59,6 +129,70 @@ export function useAuth() {
       isHandlingWalletChange.current = false;
     }
   }, []); // 빈 의존성 배열 - 함수가 절대 재생성되지 않음
+
+  // 지갑 연결 시 실제 체인 ID 확인 및 네트워크 변경 이벤트 리스닝
+  useEffect(() => {
+    if (!isConnected) {
+      setWalletChainId(null);
+      hasAttemptedSwitch.current = false;
+      return;
+    }
+
+    // 초기 체인 ID 가져오기
+    getWalletChainId().then(setWalletChainId);
+
+    // 네트워크 변경 이벤트 리스닝
+    const handleChainChanged = (data: unknown) => {
+      const chainIdHex = data as string;
+      const newChainId = parseInt(chainIdHex, 16);
+      console.log(`[Network] Chain changed to ${newChainId}`);
+      setWalletChainId(newChainId);
+      hasAttemptedSwitch.current = false; // 새 네트워크에서 다시 시도 가능
+    };
+
+    if (window.ethereum) {
+      window.ethereum.on('chainChanged', handleChainChanged);
+    }
+
+    return () => {
+      if (window.ethereum) {
+        window.ethereum.removeListener('chainChanged', handleChainChanged);
+      }
+    };
+  }, [isConnected]);
+
+  // 네트워크 자동 전환: Base Sepolia가 아니면 네트워크 추가 후 전환 요청
+  useEffect(() => {
+    if (!isConnected || walletChainId === null) return;
+    if (walletChainId === TARGET_CHAIN_ID) {
+      hasAttemptedSwitch.current = false;
+      isSwitching.current = false;
+      return;
+    }
+    if (hasAttemptedSwitch.current || isSwitching.current) return;
+
+    const switchNetwork = async () => {
+      isSwitching.current = true;
+      hasAttemptedSwitch.current = true;
+
+      console.log(`[Network] Current chain ${walletChainId}, switching to Base Sepolia (${TARGET_CHAIN_ID})`);
+      toast.info('Base Sepolia 네트워크로 전환합니다...', { duration: 3000 });
+
+      const success = await addAndSwitchNetwork();
+
+      if (success) {
+        toast.success('Base Sepolia 네트워크로 전환되었습니다!');
+      } else {
+        toast.error('네트워크 전환이 필요합니다. 지갑에서 Base Sepolia로 전환해주세요.', {
+          duration: 5000,
+        });
+      }
+
+      isSwitching.current = false;
+    };
+
+    switchNetwork();
+  }, [isConnected, walletChainId]);
 
   // Privy 인증 상태를 Zustand 스토어와 동기화
   useEffect(() => {
